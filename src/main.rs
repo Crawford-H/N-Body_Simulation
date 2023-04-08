@@ -1,6 +1,9 @@
 use coffee::{Game, Result, graphics::WindowSettings};
 
 mod app;
+mod config;
+mod particle;
+
 
 fn main() -> Result<()> {
     app::Application::run(WindowSettings {
