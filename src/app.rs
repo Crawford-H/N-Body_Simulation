@@ -5,7 +5,7 @@ use rayon::prelude::*;
 
 use rand::Rng;
 
-use crate::particle::Particle;
+use crate::particle::{Particle, acceleration};
 use crate::config::Config;
 
 pub struct Application {
@@ -27,19 +27,23 @@ pub struct Application {
 impl Application {
     fn update_acceleration_par(&mut self) {
         let entities_clone = self.entities.clone();
-        self.entities.par_iter_mut().for_each(move |particle| {
-            particle.acceleration.x = 0.;
-            particle.acceleration.y = 0.;
-            entities_clone.iter().for_each(|other| { particle.calculate_acceleration(other) });
-        })
+
+        self.entities.par_iter_mut().for_each( move |particle| {
+            particle.acceleration = entities_clone
+                .iter()
+                .filter(|other| particle.id != other.id )
+                .fold(Vector::new(0., 0.), |acc, other|  acc + acceleration(particle, other) )
+        });
     }
 
     fn _update_acceleration_series(&mut self) {
         let entities_clone = self.entities.clone();
+        
         for particle in self.entities.iter_mut() {
-            for other in entities_clone.iter() {
-                particle.calculate_acceleration(other)
-            };
+            particle.acceleration = entities_clone
+                .iter()
+                .filter(|other| particle.id != other.id )
+                .fold(Vector::new(0., 0.), |acc, other| acc + acceleration(particle, other) )
         };
     }
 
@@ -47,9 +51,9 @@ impl Application {
         let generator = &mut rand::thread_rng();
         for _ in 0..num_particles {
             self.entities.push(Particle { 
-                velocity: Vector::new(generator.gen_range(-5.0e-1..5.0e-1), generator.gen_range(-5.0e-1..5.0e-1)), 
-                position: Point::new(generator.gen_range(-3.0e3..3.0e3), generator.gen_range(-3.0e3..3.0e3)), 
-                mass: generator.gen_range(10.0e2..1.0e6), 
+                velocity: Vector::new(generator.gen_range(-1.0e-1..1.0e-1), generator.gen_range(-1.0e-1..1.0e-1)), 
+                position: Point::new(generator.gen_range(-1.0e3..1.0e3), generator.gen_range(-1.0e3..1.0e3)), 
+                mass: generator.gen_range(10.0e1..1.0e8), 
                 acceleration: Vector::new(0., 0.),
                 id: self.entities.len() as u16, 
             })
@@ -58,7 +62,7 @@ impl Application {
 
     fn generate_solar_system(&mut self) {
         self.scale = 1500. / 4495.060e9;
-        self.time_scale = 100000.;
+        self.time_scale = 5000.;
         // generate the sun
         self.entities.push(Particle { 
             id: self.entities.len() as u16, 
@@ -145,7 +149,6 @@ impl Application {
 impl Game for Application {
     type Input = KeyboardAndMouse;
     type LoadingScreen = ();
-
     const TICKS_PER_SECOND: u16 = 64;
     const DEBUG_KEY: Option<keyboard::KeyCode> = Some(keyboard::KeyCode::F12);
 
@@ -156,15 +159,14 @@ impl Game for Application {
                 entities: Vec::new(),
                 batch: Batch::new(sprites),
                 particle_sprite_quad: Rectangle { x: 0, y: 0, height: config.sprite_height, width: config.sprite_width },
-                config,
-                zoom: 1.,
-                camera_position: Point::new(0.0, 0.0),
+                camera_position: Point::new(config.screen_width as f32 / 2., config.screen_height as f32 / 2.),
                 camera_transform: Transformation::identity(),
+                zoom: 1.,
                 scale: 1.,
                 time_scale: 1.,
+                config,
         })
     }
-
 
     fn draw(&mut self, frame: &mut Frame, timer: &Timer) {
         frame.clear(Color::BLACK);

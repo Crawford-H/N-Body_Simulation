@@ -1,7 +1,6 @@
 use coffee::graphics::{Vector, Point};
 
 
-
 const G: f32 = 6.67430e-11;
 
 #[derive(Clone)]
@@ -14,7 +13,6 @@ pub struct Particle {
 }
 
 impl Particle {
-
     pub fn new(position_x: f32, position_y: f32, mass: f32, id: u16) -> Particle {
         Particle { 
             velocity: Vector::new(0., 0.), 
@@ -24,16 +22,16 @@ impl Particle {
             id,
         }
     }
+}
 
-    pub fn calculate_acceleration(&mut self, other: &Particle) {
-        if self.id == other.id { return; }
+pub fn acceleration(lhs: &Particle, rhs: &Particle) -> Vector {
+    let distance: Vector = lhs.position - rhs.position;
+    let acceleration = (-1. * G * rhs.mass) / distance.magnitude_squared();
 
-        let distance: Vector = self.position - other.position;
-        let acceleration = (-1. * G * other.mass) / distance.magnitude_squared();
-
-        if acceleration.is_nan() { return; } 
-
-        self.acceleration += acceleration * (distance / distance.magnitude());
+    if acceleration.is_nan() {
+        Vector::new(0., 0.) 
+    } else {
+        acceleration * (distance / distance.magnitude())
     }
 }
 
