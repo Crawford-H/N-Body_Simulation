@@ -8,6 +8,7 @@ pub struct Config {
     pub star_sprite_path: String,
     pub screen_width: u16,
     pub screen_height: u16,
+    pub num_threads: u16,
 }
 
 impl Config {
@@ -21,6 +22,7 @@ impl Config {
             star_sprite_path: std::env::var("STAR_SPRITE").expect("Environment variable STAR_SPRITE missing"),
             screen_width: std::env::var("SCREEN_WIDTH").expect("Environment variable SPRITE_SCALE missing").parse().unwrap(),
             screen_height: std::env::var("SCREEN_HEIGHT").expect("Environment variable SPRITE_SCALE missing").parse().unwrap(),
+            num_threads: std::env::var("NUM_THREADS").expect("Environment variable SPRITE_SCALE missing").parse().unwrap(),
         }
     }
 }
