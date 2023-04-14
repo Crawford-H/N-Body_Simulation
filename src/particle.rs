@@ -1,3 +1,5 @@
+use std::slice::Iter;
+
 use coffee::graphics::{Vector, Point};
 
 
@@ -13,10 +15,10 @@ pub struct Particle {
 }
 
 impl Particle {
-    pub fn new(position_x: f32, position_y: f32, mass: f32, id: u16) -> Particle {
+    pub fn new(position: (f32, f32), velocity: (f32, f32), mass: f32, id: u16) -> Particle {
         Particle { 
-            velocity: Vector::new(0., 0.), 
-            position: Point::new(position_x, position_y), 
+            velocity: Vector::new(velocity.0, velocity.1), 
+            position: Point::new(position.0, position.1), 
             mass,
             acceleration: Vector::new(0., 0.),
             id,
@@ -24,9 +26,10 @@ impl Particle {
     }
 }
 
-pub fn acceleration(lhs: &Particle, rhs: &Particle) -> Vector {
+/// Returns a Vector representing the acceleration of the particle on the left hand side imparted by the particle on the right hand side.
+pub fn calculate_acceleration(lhs: &Particle, rhs: &Particle) -> Vector {
     let distance: Vector = lhs.position - rhs.position;
-    let acceleration = (-1. * G * rhs.mass) / distance.magnitude_squared();
+    let acceleration = (-1. * G * rhs.mass) / distance.magnitude_squared(); // acceleration = -G * M2 / r^2
 
     if acceleration.is_nan() {
         Vector::new(0., 0.) 
@@ -35,6 +38,15 @@ pub fn acceleration(lhs: &Particle, rhs: &Particle) -> Vector {
     }
 }
 
+/// Calculate the net acceleration on a given particle by summing the accelerations caused by every other particle in the vector.
+pub fn net_acceleration(iterator: Iter<Particle>, particle: &Particle) -> Vector {
+    iterator
+        .filter(|other| particle.id != other.id )
+        .map(|other| calculate_acceleration(particle, other))
+        .sum()
+}
+
+/// Returns a vector of particles containing the sun and planets in the solar system
 pub fn solar_system(id: u16) -> Vec<Particle> {
     vec![
         Particle { // sun

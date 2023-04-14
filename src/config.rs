@@ -8,7 +8,7 @@ pub struct Config {
     pub star_sprite_path: String,
     pub screen_width: u16,
     pub screen_height: u16,
-    pub num_threads: u16,
+    pub num_threads: usize,
 }
 
 impl Config {
