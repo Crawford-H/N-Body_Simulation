@@ -4,6 +4,7 @@ use coffee::{Result, graphics::WindowSettings, ui::UserInterface};
 mod app;
 mod config;
 mod particle;
+mod benchmark;
 
 
 fn main() -> Result<()> {
