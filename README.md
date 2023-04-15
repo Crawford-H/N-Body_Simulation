@@ -8,7 +8,9 @@ This is a 2D physics simulation written in Rust. This program simulates the forc
 
 ## Key Bindings
 * Change the algorithm used for calculating each particle's position with <kbd>tab</kbd>.
-* Move camera with <kbd>W</kbd>, <kbd>A</kbd>, <kbd>S</kbd>, and <kbd>D</kbd>
+* Move camera with <kbd>w</kbd>, <kbd>a</kbd>, <kbd>s</kbd>, and <kbd>d</kbd>
 * Runs a benchmark on the algorithm calculating physics with <kbd>1</kbd>. The results are printed in the console.
 * Spawn a very heavy particle with <kbd>2</kbd>.
+* Use <kbd>3</kbd> to generate a large number of particles randomly.
+* Use <kbd>4</kbd> to generate the solar system.
 * Use <kbd>Left Click</kbd> to spawn particles depending on setting provided in the User Interface.

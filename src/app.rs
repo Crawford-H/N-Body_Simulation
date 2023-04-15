@@ -256,9 +256,6 @@ impl Game for Application {
             self.velocity = (0., 0.);
             self.entities = Vec::new();
         }
-        if input.keyboard().was_key_released(keyboard::KeyCode::P) {
-            println!("Number of particles = {}", self.entities.len());
-        }
     }
 }
 
