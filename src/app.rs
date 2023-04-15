@@ -52,15 +52,16 @@ pub struct Application {
 }
 
 impl Application {
-    fn update_acceleration(&mut self, dt: f32) {
+    /// Update position of particles depending on the algorithm selected
+    fn update_entity_position(&mut self, dt: f32) {
         match self.algorithm {
-            UpdateParticleAlgorithm::Sequential => self.update_acceleration_series(dt),
-            UpdateParticleAlgorithm::Threading => self.update_acceleration_threads(dt),
-            UpdateParticleAlgorithm::ParallelFor => self.update_acceleration_par_for(dt),
+            UpdateParticleAlgorithm::Sequential => self.update_position_series(dt),
+            UpdateParticleAlgorithm::Threading => self.update_position_threads(dt),
+            UpdateParticleAlgorithm::ParallelFor => self.update_position_par_for(dt),
         }
     }
 
-    fn update_acceleration_par_for(&mut self, dt: f32) {
+    fn update_position_par_for(&mut self, dt: f32) {
         let entities_clone = self.entities.clone();
         let time_scale = self.time_scale;
 
@@ -71,7 +72,7 @@ impl Application {
         });
     }
 
-    fn update_acceleration_series(&mut self, dt: f32) {
+    fn update_position_series(&mut self, dt: f32) {
         let entities_clone = self.entities.clone();
         
         for particle in self.entities.iter_mut() {
@@ -81,7 +82,7 @@ impl Application {
         };
     }
 
-    fn update_acceleration_threads(&mut self, dt: f32) {
+    fn update_position_threads(&mut self, dt: f32) {
         let entities = Arc::new(self.entities.clone());
         let num_threads = self.config.num_threads;
         let time_scale = self.time_scale;
@@ -178,7 +179,7 @@ impl Game for Application {
         
         let benchmark_time = Instant::now();
 
-        self.update_acceleration(self.time.elapsed().as_secs_f32());
+        self.update_entity_position(self.time.elapsed().as_secs_f32());
         // self.update_position(self.time.elapsed().as_secs_f32());
         self.time = Instant::now();
 
