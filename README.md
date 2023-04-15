@@ -1,4 +1,4 @@
-# 2D Physics Simulation For CSCI4060u
+# 2D Particle Physics Simulation - Crawford Heidinger 100753120
 This is a 2D physics simulation written in Rust. This program simulates the force of gravity between each particle in the system. The particles move depending on how much time has elapsed, the mass of the particles, and the velocity of the particles. This simulation does not take into account other forces such as dark matter but uses the formula $a = -Gm_2 / r^2$ to calculate the acceleration of the particles, then uses the elapsed time to calculate the new velocity, then the new position.
 
 ## How to Run

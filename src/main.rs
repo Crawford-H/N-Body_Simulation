@@ -1,3 +1,6 @@
+/// Author: Crawford Heidinger
+/// Student number: 100753120
+
 use app::Application;
 use coffee::{Result, graphics::WindowSettings, ui::UserInterface};
 
