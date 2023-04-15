@@ -61,6 +61,7 @@ impl Application {
         }
     }
 
+    /// Updated positon of particles using the Rayon library which allows for parallel iteration using the same syntax as it would be in series.
     fn update_position_par_for(&mut self, dt: f32) {
         let entities_clone = self.entities.clone();
         let time_scale = self.time_scale;
@@ -72,6 +73,7 @@ impl Application {
         });
     }
 
+    /// Calculate the position of the particles in series.
     fn update_position_series(&mut self, dt: f32) {
         let entities_clone = self.entities.clone();
         
@@ -82,11 +84,13 @@ impl Application {
         };
     }
 
+    /// Update the position of the particles in parallel using the standard library threads.
     fn update_position_threads(&mut self, dt: f32) {
         let entities = Arc::new(self.entities.clone());
         let num_threads = self.config.num_threads;
         let time_scale = self.time_scale;
         
+        // create threads then caculate positions of a subset of the entities
         let mut handles: Vec<thread::JoinHandle<Vec<Particle>>> = vec![];
         for i in 0..num_threads {
             let entities = Arc::clone(&entities);
@@ -104,6 +108,7 @@ impl Application {
             }));
         }
 
+        // get the return values from the threads then set the updated list as the positions
         self.entities = handles
             .into_iter()
             .map(|handle| handle.join().unwrap())
@@ -117,6 +122,7 @@ impl Application {
             .collect();
     }
 
+    /// Generate particles randomly in different position with different velocities.
     fn generate_random_particles(&mut self, num_particles: i32) {
         let generator = &mut rand::thread_rng();
         for _ in 0..num_particles {
@@ -130,6 +136,7 @@ impl Application {
         }
     }
 
+    /// Adds particles that represent the solar system to the entities list.
     fn generate_solar_system(&mut self) {
         self.scale = 1500. / 4495.060e9;
         self.time_scale = 500000.;
@@ -144,6 +151,7 @@ impl Game for Application {
     const TICKS_PER_SECOND: u16 = 64;
     const DEBUG_KEY: Option<keyboard::KeyCode> = Some(keyboard::KeyCode::F12);
 
+    /// Called once at the beginning of the program. Loads the sprite for the particles the sets the initial values.
     fn load(_window: &Window) -> Task<Application> {
         let config = Config::new();
         Task::stage("Loading Sprites", Image::load(config.star_sprite_path.as_str())).map(|sprites| 
@@ -173,14 +181,14 @@ impl Game for Application {
     fn draw(&mut self, frame: &mut Frame, _timer: &Timer) {
         frame.clear(Color::BLACK);
         
+        // update camera position
         let mut target = frame.as_target();
         self.camera_transform = Transformation::translate(Vector::new(self.camera_position.x, self.camera_position.y));
         let mut camera = target.transform(self.camera_transform);
         
+        // update particles and benchmark times
         let benchmark_time = Instant::now();
-
         self.update_entity_position(self.time.elapsed().as_secs_f32());
-        // self.update_position(self.time.elapsed().as_secs_f32());
         self.time = Instant::now();
 
         match self.benchmark.status {
@@ -189,6 +197,7 @@ impl Game for Application {
             BenchmarkStatus::Paused => {},
         }
 
+        // create sprites for rendering with updated positions
         let sprite_offset = Vector::new(self.config.sprite_width as f32 * self.config.sprite_scale / 2., self.config.sprite_height as f32 * self.config.sprite_scale / 2.);
         let sprites = self.entities
             .par_iter()
@@ -200,36 +209,40 @@ impl Game for Application {
                 }
         });
     
+        // draw sprites
         self.batch.clear();
         self.batch.par_extend(sprites);
         self.batch.draw(&mut camera);
     }
 
     fn interact(&mut self, input: &mut Self::Input, _window: &mut Window) {
+        // store calculations for cursor positions
         let cursor_position = input.mouse().cursor_position();
         let x_position = (cursor_position.x - self.camera_position.x) / self.scale;
         let y_position = (cursor_position.y - self.camera_position.y) / self.scale;
+
         if input.mouse().is_button_pressed(mouse::Button::Left) {
             self.entities.push(Particle::new((x_position, y_position), self.velocity, self.mass, self.entities.len() as u16));
         }
 
-        if input.keyboard().was_key_released(keyboard::KeyCode::Key1) {
+        if input.keyboard().was_key_released(keyboard::KeyCode::Key1) {  // start a benchmark
             self.benchmark = Benchmark::new(1000);
             self.benchmark.start();
         }
 
-        if input.keyboard().was_key_released(keyboard::KeyCode::Key2) {
+        if input.keyboard().was_key_released(keyboard::KeyCode::Key2) { // create a large particle
             self.entities.push(Particle::new((x_position, y_position), self.velocity, 1.0e12, self.entities.len() as u16));
         }
 
-        if input.keyboard().was_key_released(keyboard::KeyCode::Key3) {
+        if input.keyboard().was_key_released(keyboard::KeyCode::Key3) { // create 4000 random particles
             self.generate_random_particles(4000);
         }
 
-        if input.keyboard().was_key_released(keyboard::KeyCode::Key4) {
+        if input.keyboard().was_key_released(keyboard::KeyCode::Key4) { // generate the solar system
             self.generate_solar_system();
         }
 
+        // change the algorithm used to calculate physics
         if input.keyboard().was_key_released(keyboard::KeyCode::Tab) {
             match self.algorithm {
                 UpdateParticleAlgorithm::Sequential => self.algorithm = UpdateParticleAlgorithm::ParallelFor,
@@ -238,6 +251,7 @@ impl Game for Application {
             }
         }
 
+        // camera movements
         if input.keyboard().is_key_pressed(keyboard::KeyCode::W) {
             self.camera_position.y += 5.;
         }
@@ -250,6 +264,8 @@ impl Game for Application {
         if input.keyboard().is_key_pressed(keyboard::KeyCode::D) {
             self.camera_position.x -= 5.;
         }
+
+        // reset values
         if input.keyboard().was_key_released(keyboard::KeyCode::R) {
             self.time_scale = 1.;
             self.scale = 1.;
