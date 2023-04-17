@@ -1,4 +1,4 @@
-use std::sync::Arc;
+use std::sync::{Arc, RwLock};
 use std::time::Instant;
 use std::thread;
 
@@ -52,6 +52,10 @@ pub struct Application {
 }
 
 impl Application {
+    fn init_threads(&mut self) {
+
+    }
+
     /// Update position of particles depending on the algorithm selected
     fn update_entity_position(&mut self, dt: f32) {
         match self.algorithm {
@@ -86,40 +90,45 @@ impl Application {
 
     /// Update the position of the particles in parallel using the standard library threads.
     fn update_position_threads(&mut self, dt: f32) {
-        let entities = Arc::new(self.entities.clone());
+        let entities_clone = Arc::new(RwLock::new(self.entities.clone()));
         let num_threads = self.config.num_threads;
         let time_scale = self.time_scale;
-        
+
         // create threads then caculate positions of a subset of the entities
-        let mut handles: Vec<thread::JoinHandle<Vec<Particle>>> = vec![];
+        let mut handles = Vec::with_capacity(num_threads);
         for i in 0..num_threads {
-            let entities = Arc::clone(&entities);
+            let entities_lock = Arc::clone(&entities_clone);
             handles.push(thread::spawn(move || {
-                entities
-                    .iter()
+                let read = entities_lock.read().unwrap();
+                let accelerations: Vec<Vector> = read.iter()
                     .skip(i)
                     .step_by(num_threads)
                     .map(|particle| {
-                        let mut temp = particle.clone();
-                        temp.acceleration = net_acceleration(entities.iter(), particle);
-                        temp
+                        net_acceleration(read.iter(), particle)
                     })
-                    .collect()
+                    .collect();
+                drop(read);
+
+                let mut write = entities_lock.write().unwrap();
+                write.iter_mut()
+                    .skip(i)
+                    .step_by(num_threads)
+                    .zip(accelerations)
+                    .for_each(|(particle, acceleration)| {
+                        particle.velocity += acceleration * dt * time_scale;
+                        particle.position += particle.velocity * dt * time_scale;
+                    });
+                drop(write);
             }));
         }
 
-        // get the return values from the threads then set the updated list as the positions
-        self.entities = handles
-            .into_iter()
-            .map(|handle| handle.join().unwrap())
-            .flatten()
-            .map(|particle| {
-                let mut temp = particle.clone();
-                temp.velocity += particle.acceleration * dt * time_scale;
-                temp.position += particle.velocity * dt * time_scale;
-                temp
-            })
-            .collect();
+        for handle in handles.into_iter() {
+            handle.join().unwrap();
+        }
+
+        let read = entities_clone.read().unwrap();
+        self.entities = read.clone();
+        drop(read);
     }
 
     /// Generate particles randomly in different position with different velocities.
