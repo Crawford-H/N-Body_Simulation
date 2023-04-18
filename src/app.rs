@@ -20,7 +20,6 @@ pub enum UpdateParticleAlgorithm {
     ParallelFor,
 }
 
-#[derive()]
 pub struct Application {
     entities: Vec<Particle>, // vector to store locations of particles
     mass: f32,
@@ -330,8 +329,8 @@ impl UserInterface for Application {
                 .padding(10)
                 .push(Text::new(format!("Algorithm: {}", match self.algorithm {
                     UpdateParticleAlgorithm::ParallelFor=> "Parallel For Loop",
-                    UpdateParticleAlgorithm::Sequential => "Multi-threaded",
-                    UpdateParticleAlgorithm::Threading => "Series", }).as_str()))
+                    UpdateParticleAlgorithm::Sequential => "Series",
+                    UpdateParticleAlgorithm::Threading => "Multi-threaded", }).as_str()))
                 .push(Text::new(format!("Number of Threads: {}", self.config.num_threads).as_str()))
                 .push(Row::new()
                     .padding(10)
