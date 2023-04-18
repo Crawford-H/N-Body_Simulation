@@ -15,33 +15,32 @@ use crate::particle::{Particle, solar_system, net_acceleration};
 use crate::config::Config;
 
 pub enum UpdateParticleAlgorithm {
-    Sequential,
+    // Sequential,
     Threading,
-    ParallelFor,
+    // ParallelFor,
 }
 
-#[derive()]
 pub struct Application {
-    entities: Vec<Particle>, // vector to store locations of particles
-    mass: f32,
-
+    entities: Arc<RwLock<Vec<Particle>>>, // vector to store locations of particles
+    
     // variables for rendering particles
     particle_sprite_quad: Rectangle<u16>,
     batch: Batch,
     camera_transform: Transformation,
     camera_position: Point,
     scale: f32,
-
+    
     // variables for tracking time
     time: Instant,
     time_scale: f32,
     benchmark: Benchmark,
-
+    
     // config to store various constants
     config: Config, 
     algorithm: UpdateParticleAlgorithm,
-
+    
     // ui variables
+    mass: f32,
     time_scale_slider: State,
     mass_slider: State,
     x_velocity_slider: State,
@@ -59,45 +58,44 @@ impl Application {
     /// Update position of particles depending on the algorithm selected
     fn update_entity_position(&mut self, dt: f32) {
         match self.algorithm {
-            UpdateParticleAlgorithm::Sequential => self.update_position_series(dt),
+            // UpdateParticleAlgorithm::Sequential => self.update_position_series(dt),
             UpdateParticleAlgorithm::Threading => self.update_position_threads(dt),
-            UpdateParticleAlgorithm::ParallelFor => self.update_position_par_for(dt),
+            // UpdateParticleAlgorithm::ParallelFor => self.update_position_par_for(dt),
         }
     }
 
     /// Updated positon of particles using the Rayon library which allows for parallel iteration using the same syntax as it would be in series.
-    fn update_position_par_for(&mut self, dt: f32) {
-        let entities_clone = self.entities.clone();
-        let time_scale = self.time_scale;
+    // fn update_position_par_for(&mut self, dt: f32) {
+    //     let entities_clone = self.entities.clone();
+    //     let time_scale = self.time_scale;
 
-        self.entities.par_iter_mut().for_each(move |particle| {
-            particle.acceleration = net_acceleration(entities_clone.iter(), particle);
-            particle.velocity += particle.acceleration * dt * time_scale;
-            particle.position += particle.velocity * dt * time_scale;
-        });
-    }
+    //     self.entities.par_iter_mut().for_each(move |particle| {
+    //         particle.acceleration = net_acceleration(entities_clone.iter(), particle);
+    //         particle.velocity += particle.acceleration * dt * time_scale;
+    //         particle.position += particle.velocity * dt * time_scale;
+    //     });
+    // }
 
     /// Calculate the position of the particles in series.
-    fn update_position_series(&mut self, dt: f32) {
-        let entities_clone = self.entities.clone();
+    // fn update_position_series(&mut self, dt: f32) {
+    //     let entities_clone = self.entities.clone();
         
-        for particle in self.entities.iter_mut() {
-            particle.acceleration = net_acceleration(entities_clone.iter(), particle);
-            particle.velocity += particle.acceleration * dt * self.time_scale;
-            particle.position += particle.velocity * dt * self.time_scale;
-        };
-    }
+    //     for particle in self.entities.iter_mut() {
+    //         particle.acceleration = net_acceleration(entities_clone.iter(), particle);
+    //         particle.velocity += particle.acceleration * dt * self.time_scale;
+    //         particle.position += particle.velocity * dt * self.time_scale;
+    //     };
+    // }
 
     /// Update the position of the particles in parallel using the standard library threads.
     fn update_position_threads(&mut self, dt: f32) {
-        let entities_clone = Arc::new(RwLock::new(self.entities.clone()));
         let num_threads = self.config.num_threads;
         let time_scale = self.time_scale;
 
         // create threads then caculate positions of a subset of the entities
         let mut handles = Vec::with_capacity(num_threads);
         for i in 0..num_threads {
-            let entities_lock = Arc::clone(&entities_clone);
+            let entities_lock = Arc::clone(&self.entities);
             handles.push(thread::spawn(move || {
                 let read = entities_lock.read().unwrap();
                 let accelerations: Vec<Vector> = read.iter()
@@ -118,39 +116,38 @@ impl Application {
                         particle.velocity += acceleration * dt * time_scale;
                         particle.position += particle.velocity * dt * time_scale;
                     });
-                drop(write);
             }));
         }
 
         for handle in handles.into_iter() {
             handle.join().unwrap();
         }
-
-        let read = entities_clone.read().unwrap();
-        self.entities = read.clone();
-        drop(read);
     }
 
     /// Generate particles randomly in different position with different velocities.
     fn generate_random_particles(&mut self, num_particles: i32) {
         let generator = &mut rand::thread_rng();
+        let len = self.entities.read().unwrap().len();
+        let mut entities = self.entities.write().unwrap();
         for _ in 0..num_particles {
-            self.entities.push(Particle { 
+            entities.push(Particle { 
                 velocity: Vector::new(generator.gen_range(-1.0e-1..1.0e-1), generator.gen_range(-1.0e-1..1.0e-1)), 
                 position: Point::new(generator.gen_range(-1.0e3..1.0e3), generator.gen_range(-1.0e3..1.0e3)), 
                 mass: generator.gen_range(10.0e1..1.0e8), 
                 acceleration: Vector::new(0., 0.),
-                id: self.entities.len() as u16, 
+                id: len as u16, 
             })
         }
     }
 
     /// Adds particles that represent the solar system to the entities list.
     fn generate_solar_system(&mut self) {
+        let len = self.entities.read().unwrap().len();
+        let mut entities = self.entities.write().unwrap();
         self.scale = 1500. / 4495.060e9;
         self.time_scale = 500000.;
-        self.entities.clear();
-        self.entities.extend(solar_system(self.entities.len() as u16));
+        entities.clear();
+        entities.extend(solar_system(len as u16));
     }
 }
 
@@ -166,7 +163,7 @@ impl Game for Application {
         Task::stage("Loading Sprites", Image::load(config.star_sprite_path.as_str())).map(|sprites| 
             Application {
                 mass: 100.,
-                entities: Vec::new(),
+                entities: Arc::new(RwLock::new(Vec::new())),
                 batch: Batch::new(sprites),
                 particle_sprite_quad: Rectangle { x: 0, y: 0, height: config.sprite_height, width: config.sprite_width },
                 camera_position: Point::new(config.screen_width as f32 / 2., config.screen_height as f32 / 2.),
@@ -174,7 +171,7 @@ impl Game for Application {
                 scale: 1.,
                 time_scale: 100.,
                 config,
-                algorithm: UpdateParticleAlgorithm::ParallelFor,
+                algorithm: UpdateParticleAlgorithm::Threading,
                 time: Instant::now(),
                 time_scale_slider: slider::State::new(),
                 mass_slider: slider::State::new(),
@@ -208,15 +205,14 @@ impl Game for Application {
 
         // create sprites for rendering with updated positions
         let sprite_offset = Vector::new(self.config.sprite_width as f32 * self.config.sprite_scale / 2., self.config.sprite_height as f32 * self.config.sprite_scale / 2.);
-        let sprites = self.entities
-            .par_iter()
-            .map(|particle| {
-                Sprite {
-                    source: self.particle_sprite_quad,
-                    position: (particle.position * self.scale) - sprite_offset,
-                    scale: (self.config.sprite_scale, self.config.sprite_scale),
-                }
-        });
+        let lock = self.entities.read().unwrap();
+        let mapper = |particle: &Particle| {
+                    Sprite {
+                        source: self.particle_sprite_quad,
+                        position: (particle.position * self.scale) - sprite_offset,
+                        scale: (self.config.sprite_scale, self.config.sprite_scale),
+        }};
+        let sprites = lock.par_iter().map(mapper);
     
         // draw sprites
         self.batch.clear();
@@ -231,7 +227,9 @@ impl Game for Application {
         let y_position = (cursor_position.y - self.camera_position.y) / self.scale;
 
         if input.mouse().is_button_pressed(mouse::Button::Left) {
-            self.entities.push(Particle::new((x_position, y_position), self.velocity, self.mass, self.entities.len() as u16));
+            let len = self.entities.read().unwrap().len();
+            let mut entities = self.entities.write().unwrap();
+            entities.push(Particle::new((x_position, y_position), self.velocity, self.mass, len as u16));
         }
 
         if input.keyboard().was_key_released(keyboard::KeyCode::Key1) {  // start a benchmark
@@ -240,7 +238,9 @@ impl Game for Application {
         }
 
         if input.keyboard().was_key_released(keyboard::KeyCode::Key2) { // create a large particle
-            self.entities.push(Particle::new((x_position, y_position), self.velocity, 1.0e12, self.entities.len() as u16));
+            let len = self.entities.read().unwrap().len();
+            let mut entities = self.entities.write().unwrap();
+            entities.push(Particle::new((x_position, y_position), self.velocity, 1.0e12, len as u16));
         }
 
         if input.keyboard().was_key_released(keyboard::KeyCode::Key3) { // create 4000 random particles
@@ -254,9 +254,9 @@ impl Game for Application {
         // change the algorithm used to calculate physics
         if input.keyboard().was_key_released(keyboard::KeyCode::Tab) {
             match self.algorithm {
-                UpdateParticleAlgorithm::Sequential => self.algorithm = UpdateParticleAlgorithm::ParallelFor,
-                UpdateParticleAlgorithm::Threading => self.algorithm = UpdateParticleAlgorithm::Sequential,
-                UpdateParticleAlgorithm::ParallelFor => self.algorithm = UpdateParticleAlgorithm::Threading,
+                // UpdateParticleAlgorithm::Sequential => self.algorithm = UpdateParticleAlgorithm::ParallelFor,
+                UpdateParticleAlgorithm::Threading => self.algorithm = UpdateParticleAlgorithm::Threading,
+                // UpdateParticleAlgorithm::ParallelFor => self.algorithm = UpdateParticleAlgorithm::Threading,
             }
         }
 
@@ -279,7 +279,7 @@ impl Game for Application {
             self.time_scale = 1.;
             self.scale = 1.;
             self.velocity = (0., 0.);
-            self.entities = Vec::new();
+            self.entities = Arc::new(RwLock::new(Vec::new()));
         }
     }
 }
@@ -310,6 +310,7 @@ impl UserInterface for Application {
     }
 
     fn layout(&mut self, window: &Window,) -> Element<Message> {
+        let entities = self.entities.read().unwrap();
 
         Row::new()
             .padding(20)
@@ -321,7 +322,7 @@ impl UserInterface for Application {
             .push(Column::new()
                 .padding(10)
                 .push(Text::new(format!("Scale: {} meter(s) / pixel", 1. / self.scale).as_str()))
-                .push(Text::new(format!("Number of particles: {}", self.entities.len()).as_str()))
+                .push(Text::new(format!("Number of particles: {}", entities.len()).as_str()))
                 .push(Text::new(format!("Time Scale: {:.5} seconds / actual seconds", self.time_scale).as_str()).size(20))
                 .push(Slider::new(&mut self.time_scale_slider, 0.1..=1.0e3, self.time_scale, Message::TimeScaleChanged))
                 .push(Text::new(format!("Spawned Particle Mass: {} kg", self.mass).as_str()).size(20))
@@ -338,9 +339,9 @@ impl UserInterface for Application {
             .push(Column::new()
                 .padding(10)
                 .push(Text::new(format!("Algorithm: {}", match self.algorithm {
-                    UpdateParticleAlgorithm::ParallelFor=> "Parallel For Loop",
-                    UpdateParticleAlgorithm::Sequential => "Multi-threaded",
-                    UpdateParticleAlgorithm::Threading => "Series", }).as_str()))
+                    // UpdateParticleAlgorithm::ParallelFor=> "Parallel For Loop",
+                    // UpdateParticleAlgorithm::Sequential => "Series",
+                    UpdateParticleAlgorithm::Threading => "Multi-threaded", }).as_str()))
                 .push(Text::new(format!("Number of Threads: {}", self.config.num_threads).as_str()))
                 .push(Row::new()
                     .padding(10)
