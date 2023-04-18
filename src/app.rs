@@ -1,6 +1,7 @@
-use std::sync::{Arc, RwLock};
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{Arc, RwLock, Barrier, Mutex, Condvar};
 use std::time::Instant;
-use std::thread;
+use std::thread::{self, JoinHandle};
 
 use coffee::ui::slider::State;
 use coffee::ui::{Renderer, UserInterface, Element, Column, Justify, Text, Slider, slider, Align, Row, Button, button};
@@ -22,6 +23,10 @@ pub enum UpdateParticleAlgorithm {
 
 pub struct Application {
     entities: Arc<RwLock<Vec<Particle>>>, // vector to store locations of particles
+    handles: Vec<JoinHandle<()>>,
+    cond: Arc<(Mutex<bool>, Condvar)>,
+    dt: Arc<RwLock<f32>>,
+    flag: Arc<AtomicBool>,
     
     // variables for rendering particles
     particle_sprite_quad: Rectangle<u16>,
@@ -51,77 +56,70 @@ pub struct Application {
 }
 
 impl Application {
-    fn init_threads(&mut self) {
-
-    }
-
-    /// Update position of particles depending on the algorithm selected
-    fn update_entity_position(&mut self, dt: f32) {
-        match self.algorithm {
-            // UpdateParticleAlgorithm::Sequential => self.update_position_series(dt),
-            UpdateParticleAlgorithm::Threading => self.update_position_threads(dt),
-            // UpdateParticleAlgorithm::ParallelFor => self.update_position_par_for(dt),
-        }
-    }
-
-    /// Updated positon of particles using the Rayon library which allows for parallel iteration using the same syntax as it would be in series.
-    // fn update_position_par_for(&mut self, dt: f32) {
-    //     let entities_clone = self.entities.clone();
-    //     let time_scale = self.time_scale;
-
-    //     self.entities.par_iter_mut().for_each(move |particle| {
-    //         particle.acceleration = net_acceleration(entities_clone.iter(), particle);
-    //         particle.velocity += particle.acceleration * dt * time_scale;
-    //         particle.position += particle.velocity * dt * time_scale;
-    //     });
-    // }
-
-    /// Calculate the position of the particles in series.
-    // fn update_position_series(&mut self, dt: f32) {
-    //     let entities_clone = self.entities.clone();
-        
-    //     for particle in self.entities.iter_mut() {
-    //         particle.acceleration = net_acceleration(entities_clone.iter(), particle);
-    //         particle.velocity += particle.acceleration * dt * self.time_scale;
-    //         particle.position += particle.velocity * dt * self.time_scale;
-    //     };
-    // }
-
-    /// Update the position of the particles in parallel using the standard library threads.
-    fn update_position_threads(&mut self, dt: f32) {
+    fn init_threads(&mut self) -> Vec<JoinHandle<()>> {
         let num_threads = self.config.num_threads;
-        let time_scale = self.time_scale;
+        let mut handles = Vec::new();
+        let barrier = Arc::new(Barrier::new(num_threads));
 
-        // create threads then caculate positions of a subset of the entities
-        let mut handles = Vec::with_capacity(num_threads);
-        for i in 0..num_threads {
-            let entities_lock = Arc::clone(&self.entities);
+        for i in 0..self.config.num_threads {
+            let entities = Arc::clone(&self.entities);
+            let barrier = Arc::clone(&barrier);
+            let condition = Arc::clone(&self.cond);
+            let dt_lock = Arc::clone(&self.dt);
+            let flag = Arc::clone(&self.flag);
+
             handles.push(thread::spawn(move || {
-                let read = entities_lock.read().unwrap();
-                let accelerations: Vec<Vector> = read.iter()
-                    .skip(i)
-                    .step_by(num_threads)
-                    .map(|particle| {
-                        net_acceleration(read.iter(), particle)
-                    })
-                    .collect();
-                drop(read);
-
-                let mut write = entities_lock.write().unwrap();
-                write.iter_mut()
-                    .skip(i)
-                    .step_by(num_threads)
-                    .zip(accelerations)
-                    .for_each(|(particle, acceleration)| {
-                        particle.velocity += acceleration * dt * time_scale;
-                        particle.position += particle.velocity * dt * time_scale;
-                    });
+                // wait until unparked to calculate frame
+                loop {
+                    while !flag.load(Ordering::Acquire) {
+                        // println!("Parking thread: {}", flag.load(Ordering::Acquire));
+                        // thread::park();
+                        // println!("Thread unparked");
+                    }
+    
+                    // once unparked, we can calculate the frame with the dt
+                    let read = entities.read().unwrap();
+                    let accelerations: Vec<Vector> = read.iter()
+                        .skip(i)
+                        .step_by(num_threads)
+                        .map(|particle| {
+                            net_acceleration(read.iter(), particle)
+                        })
+                        .collect();
+                    drop(read); // need to drop read lock to prevent a deadlock
+    
+                    let dt_guard = dt_lock.read().unwrap();
+                    let dt = *dt_guard;
+                    drop(dt_guard);
+                    let mut write = entities.write().unwrap();
+                    write.iter_mut()
+                        .skip(i)
+                        .step_by(num_threads)
+                        .zip(accelerations)
+                        .for_each(|(particle, acceleration)| {
+                            particle.acceleration = acceleration;
+                            particle.velocity += acceleration * dt;
+                            particle.position += particle.velocity * dt;
+                        });
+                    drop(write);
+    
+                    // wait until each thread has calculated the frame
+                    let is_leader = barrier.wait();
+                    flag.store(false, Ordering::Release);
+                    
+                    // message main thread to continue loop
+                    if is_leader.is_leader() {
+                        // println!("Finished generating frame, setting cond variable");
+                        let (lock, cvar) = &*condition;
+                        let mut pending = lock.lock().unwrap();
+                        *pending = false;
+                        cvar.notify_one();
+                    }
+                }
+                
             }));
         }
-
-        for handle in handles.into_iter() {
-            handle.join().unwrap();
-        }
+        handles
     }
 
     /// Generate particles randomly in different position with different velocities.
@@ -154,14 +152,18 @@ impl Application {
 impl Game for Application {
     type Input = KeyboardAndMouse;
     type LoadingScreen = ();
-    const TICKS_PER_SECOND: u16 = 64;
+    const TICKS_PER_SECOND: u16 = 128;
     const DEBUG_KEY: Option<keyboard::KeyCode> = Some(keyboard::KeyCode::F12);
 
     /// Called once at the beginning of the program. Loads the sprite for the particles the sets the initial values.
     fn load(_window: &Window) -> Task<Application> {
         let config = Config::new();
-        Task::stage("Loading Sprites", Image::load(config.star_sprite_path.as_str())).map(|sprites| 
-            Application {
+        Task::stage("Loading Sprites", Image::load(config.star_sprite_path.as_str())).map(|sprites| {
+            let mut app = Application {
+                handles: Vec::new(),
+                cond: Arc::new((Mutex::new(true), Condvar::new())),
+                flag: Arc::new(AtomicBool::new(true)),
+                dt: Arc::new(RwLock::new(0.)),
                 mass: 100.,
                 entities: Arc::new(RwLock::new(Vec::new())),
                 batch: Batch::new(sprites),
@@ -181,6 +183,9 @@ impl Game for Application {
                 benchmark: Benchmark::new(1000),
                 increment_threads: button::State::new(),
                 decrement_threads: button::State::new(),
+            };
+            app.init_threads();
+            app
         })
     }
 
@@ -191,12 +196,27 @@ impl Game for Application {
         let mut target = frame.as_target();
         self.camera_transform = Transformation::translate(Vector::new(self.camera_position.x, self.camera_position.y));
         let mut camera = target.transform(self.camera_transform);
-        
+
         // update particles and benchmark times
         let benchmark_time = Instant::now();
-        self.update_entity_position(self.time.elapsed().as_secs_f32());
-        self.time = Instant::now();
 
+        // update dt
+        {   
+            let mut dt = self.dt.write().unwrap();
+            *dt = self.time.elapsed().as_secs_f32() * self.time_scale;
+        }
+        // unpark threads
+        self.flag.store(true, Ordering::Release);
+        // for handle in self.handles.iter() {
+        //     handle.thread().unpark();
+        // }
+        
+        // wait until threads done calculating frame
+        let pair = Arc::clone(&self.cond);
+        let (lock, cvar) = &*pair;
+        let _guard = cvar.wait_while(lock.lock().unwrap(), |pending| { *pending }).unwrap();
+        
+        self.time = Instant::now();
         match self.benchmark.status {
             BenchmarkStatus::Running => self.benchmark.increase_elapsed_time(benchmark_time.elapsed().as_secs_f64()),
             BenchmarkStatus::Finished => self.benchmark.status = BenchmarkStatus::Finished,
@@ -207,10 +227,10 @@ impl Game for Application {
         let sprite_offset = Vector::new(self.config.sprite_width as f32 * self.config.sprite_scale / 2., self.config.sprite_height as f32 * self.config.sprite_scale / 2.);
         let lock = self.entities.read().unwrap();
         let mapper = |particle: &Particle| {
-                    Sprite {
-                        source: self.particle_sprite_quad,
-                        position: (particle.position * self.scale) - sprite_offset,
-                        scale: (self.config.sprite_scale, self.config.sprite_scale),
+            Sprite {
+                source: self.particle_sprite_quad,
+                position: (particle.position * self.scale) - sprite_offset,
+                scale: (self.config.sprite_scale, self.config.sprite_scale),
         }};
         let sprites = lock.par_iter().map(mapper);
     
@@ -279,7 +299,9 @@ impl Game for Application {
             self.time_scale = 1.;
             self.scale = 1.;
             self.velocity = (0., 0.);
-            self.entities = Arc::new(RwLock::new(Vec::new()));
+            let mut lock = self.entities.write().unwrap();
+            (*lock).clear();
+            drop(lock);
         }
     }
 }
