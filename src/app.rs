@@ -1,4 +1,3 @@
-use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, RwLock, Barrier, Mutex, Condvar};
 use std::time::Instant;
 use std::thread::{self, JoinHandle};
@@ -16,17 +15,16 @@ use crate::particle::{Particle, solar_system, net_acceleration};
 use crate::config::Config;
 
 pub enum UpdateParticleAlgorithm {
-    // Sequential,
     Threading,
-    // ParallelFor,
 }
 
 pub struct Application {
     entities: Arc<RwLock<Vec<Particle>>>, // vector to store locations of particles
-    handles: Vec<JoinHandle<()>>,
-    cond: Arc<(Mutex<bool>, Condvar)>,
+    worker_threads: Vec<JoinHandle<()>>,
+    finished_frame_cond: Arc<(Mutex<bool>, Condvar)>,
     dt: Arc<RwLock<f32>>,
-    flag: Arc<AtomicBool>,
+    calc_frame_cond: Arc<(Mutex<bool>, Condvar)>,
+
     
     // variables for rendering particles
     particle_sprite_quad: Rectangle<u16>,
@@ -64,17 +62,16 @@ impl Application {
         for i in 0..self.config.num_threads {
             let entities = Arc::clone(&self.entities);
             let barrier = Arc::clone(&barrier);
-            let condition = Arc::clone(&self.cond);
+            let condition = Arc::clone(&self.finished_frame_cond);
             let dt_lock = Arc::clone(&self.dt);
-            let flag = Arc::clone(&self.flag);
+            let start_frame = Arc::clone(&self.calc_frame_cond);
 
             handles.push(thread::spawn(move || {
                 // wait until unparked to calculate frame
                 loop {
-                    while !flag.load(Ordering::Acquire) {
-                        // println!("Parking thread: {}", flag.load(Ordering::Acquire));
-                        // thread::park();
-                        // println!("Thread unparked");
+                    {
+                        let (lock, cvar) = &*start_frame;
+                        let _guard = cvar.wait_while(lock.lock().unwrap(), |x| { *x }).unwrap();
                     }
     
                     // once unparked, we can calculate the frame with the dt
@@ -105,7 +102,11 @@ impl Application {
     
                     // wait until each thread has calculated the frame
                     let is_leader = barrier.wait();
-                    flag.store(false, Ordering::Release);
+                    {
+                        let (lock, _) = &*start_frame;
+                        let mut start = lock.lock().unwrap();
+                        *start = true;
+                    }
                     
                     // message main thread to continue loop
                     if is_leader.is_leader() {
@@ -115,8 +116,7 @@ impl Application {
                         *pending = false;
                         cvar.notify_one();
                     }
-                }
-                
+                }   
             }));
         }
         handles
@@ -160,9 +160,9 @@ impl Game for Application {
         let config = Config::new();
         Task::stage("Loading Sprites", Image::load(config.star_sprite_path.as_str())).map(|sprites| {
             let mut app = Application {
-                handles: Vec::new(),
-                cond: Arc::new((Mutex::new(true), Condvar::new())),
-                flag: Arc::new(AtomicBool::new(true)),
+                worker_threads: Vec::new(),
+                finished_frame_cond: Arc::new((Mutex::new(true), Condvar::new())),
+                calc_frame_cond: Arc::new((Mutex::new(true), Condvar::new())),
                 dt: Arc::new(RwLock::new(0.)),
                 mass: 100.,
                 entities: Arc::new(RwLock::new(Vec::new())),
@@ -206,21 +206,22 @@ impl Game for Application {
             *dt = self.time.elapsed().as_secs_f32() * self.time_scale;
         }
         // unpark threads
-        self.flag.store(true, Ordering::Release);
-        // for handle in self.handles.iter() {
-        //     handle.thread().unpark();
-        // }
+        {
+            let (lock, cvar) = &*self.calc_frame_cond;
+            let mut flag = lock.lock().unwrap();
+            *flag = false;
+            cvar.notify_all();
+        }
         
         // wait until threads done calculating frame
-        let pair = Arc::clone(&self.cond);
+        let pair = Arc::clone(&self.finished_frame_cond);
         let (lock, cvar) = &*pair;
         let _guard = cvar.wait_while(lock.lock().unwrap(), |pending| { *pending }).unwrap();
         
         self.time = Instant::now();
         match self.benchmark.status {
             BenchmarkStatus::Running => self.benchmark.increase_elapsed_time(benchmark_time.elapsed().as_secs_f64()),
-            BenchmarkStatus::Finished => self.benchmark.status = BenchmarkStatus::Finished,
-            BenchmarkStatus::Paused => {},
+            BenchmarkStatus::Paused | BenchmarkStatus::Finished => {},
         }
 
         // create sprites for rendering with updated positions
@@ -326,8 +327,8 @@ impl UserInterface for Application {
             Message::MassChanged(val) => self.mass = val,
             Message::XVelocityChanged(val) => self.velocity.0 = val,
             Message::YVelocityChanged(val) => self.velocity.1 = val,
-            Message::IncrementThreads => {self.config.num_threads += 1; println!("{}", self.config.num_threads)},
-            Message::DecrementThreads => {self.config.num_threads -= if self.config.num_threads == 0 { 0 } else { 1 }; println!("{}", self.config.num_threads)},
+            Message::IncrementThreads => {self.config.num_threads += 1; println!("{}", self.config.num_threads); },
+            Message::DecrementThreads => {self.config.num_threads -= if self.config.num_threads == 0 { 0 } else { 1 }; println!("{}", self.config.num_threads); },
         }
     }
 
