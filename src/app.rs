@@ -51,15 +51,11 @@ pub struct Application {
 }
 
 impl Application {
-    fn init_threads(&mut self) {
-
-    }
-
     /// Update position of particles depending on the algorithm selected
     fn update_entity_position(&mut self, dt: f32) {
         match self.algorithm {
             // UpdateParticleAlgorithm::Sequential => self.update_position_series(dt),
-            UpdateParticleAlgorithm::Threading => self.update_position_threads(dt),
+            UpdateParticleAlgorithm::Threading => self.update_position_threads(dt * self.time_scale),
             // UpdateParticleAlgorithm::ParallelFor => self.update_position_par_for(dt),
         }
     }
@@ -90,31 +86,31 @@ impl Application {
     /// Update the position of the particles in parallel using the standard library threads.
     fn update_position_threads(&mut self, dt: f32) {
         let num_threads = self.config.num_threads;
-        let time_scale = self.time_scale;
 
         // create threads then caculate positions of a subset of the entities
-        let mut handles = Vec::with_capacity(num_threads);
+        let mut handles = vec![];
         for i in 0..num_threads {
-            let entities_lock = Arc::clone(&self.entities);
+            let entities = Arc::clone(&self.entities);
             handles.push(thread::spawn(move || {
-                let read = entities_lock.read().unwrap();
-                let accelerations: Vec<Vector> = read.iter()
-                    .skip(i)
-                    .step_by(num_threads)
-                    .map(|particle| {
-                        net_acceleration(read.iter(), particle)
-                    })
-                    .collect();
-                drop(read);
+                let accelerations: Vec<Vector> = { 
+                    let entities_lock = entities.read().unwrap();
+                    entities_lock.iter()
+                        .skip(i)
+                        .step_by(num_threads)
+                        .map(|particle| {
+                            net_acceleration(&entities_lock, particle)
+                        })
+                        .collect()
+                };
 
-                let mut write = entities_lock.write().unwrap();
-                write.iter_mut()
+                let mut entities_lock = entities.write().unwrap();
+                entities_lock.iter_mut()
                     .skip(i)
                     .step_by(num_threads)
                     .zip(accelerations)
                     .for_each(|(particle, acceleration)| {
-                        particle.velocity += acceleration * dt * time_scale;
-                        particle.position += particle.velocity * dt * time_scale;
+                        particle.velocity += acceleration * dt;
+                        particle.position += particle.velocity * dt;
                     });
             }));
         }

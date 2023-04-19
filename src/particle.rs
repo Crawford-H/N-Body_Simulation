@@ -1,5 +1,3 @@
-use std::slice::Iter;
-
 use coffee::graphics::{Vector, Point};
 
 
@@ -39,8 +37,8 @@ pub fn calculate_acceleration(lhs: &Particle, rhs: &Particle) -> Vector {
 }
 
 /// Calculate the net acceleration on a given particle by summing the accelerations caused by every other particle in the vector.
-pub fn net_acceleration(iterator: Iter<Particle>, particle: &Particle) -> Vector {
-    iterator
+pub fn net_acceleration(iterator: &Vec<Particle>, particle: &Particle) -> Vector {
+    iterator.iter()
         .filter(|other| particle.id != other.id )
         .map(|other| calculate_acceleration(particle, other))
         .sum()
