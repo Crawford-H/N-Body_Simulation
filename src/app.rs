@@ -20,12 +20,11 @@ pub enum UpdateParticleAlgorithm {
 
 pub struct Application {
     entities: Arc<RwLock<Vec<Particle>>>, // vector to store locations of particles
-    worker_threads: Vec<JoinHandle<()>>,
+    _worker_threads: Vec<JoinHandle<()>>,
     finished_frame_cond: Arc<(Mutex<bool>, Condvar)>,
     dt: Arc<RwLock<f32>>,
     calc_frame_cond: Arc<(Mutex<bool>, Condvar)>,
 
-    
     // variables for rendering particles
     particle_sprite_quad: Rectangle<u16>,
     batch: Batch,
@@ -88,21 +87,22 @@ impl Application {
                     let dt_guard = dt_lock.read().unwrap();
                     let dt = *dt_guard;
                     drop(dt_guard);
-                    let mut write = entities.write().unwrap();
-                    write.iter_mut()
-                        .skip(i)
-                        .step_by(num_threads)
-                        .zip(accelerations)
-                        .for_each(|(particle, acceleration)| {
-                            particle.acceleration = acceleration;
-                            particle.velocity += acceleration * dt;
-                            particle.position += particle.velocity * dt;
-                        });
-                    drop(write);
+                    {
+                        let mut write = entities.write().unwrap();
+                        write.iter_mut()
+                            .skip(i)
+                            .step_by(num_threads)
+                            .zip(accelerations)
+                            .for_each(|(particle, acceleration)| {
+                                particle.acceleration = acceleration;
+                                particle.velocity += acceleration * dt;
+                                particle.position += particle.velocity * dt;
+                            });
+                    }
     
                     // wait until each thread has calculated the frame
                     let is_leader = barrier.wait();
-                    {
+                    if is_leader.is_leader() {
                         let (lock, _) = &*start_frame;
                         let mut start = lock.lock().unwrap();
                         *start = true;
@@ -160,7 +160,7 @@ impl Game for Application {
         let config = Config::new();
         Task::stage("Loading Sprites", Image::load(config.star_sprite_path.as_str())).map(|sprites| {
             let mut app = Application {
-                worker_threads: Vec::new(),
+                _worker_threads: Vec::new(),
                 finished_frame_cond: Arc::new((Mutex::new(true), Condvar::new())),
                 calc_frame_cond: Arc::new((Mutex::new(true), Condvar::new())),
                 dt: Arc::new(RwLock::new(0.)),
@@ -218,11 +218,12 @@ impl Game for Application {
         let (lock, cvar) = &*pair;
         let _guard = cvar.wait_while(lock.lock().unwrap(), |pending| { *pending }).unwrap();
         
-        self.time = Instant::now();
         match self.benchmark.status {
             BenchmarkStatus::Running => self.benchmark.increase_elapsed_time(benchmark_time.elapsed().as_secs_f64()),
             BenchmarkStatus::Paused | BenchmarkStatus::Finished => {},
         }
+        
+        self.time = Instant::now();
 
         // create sprites for rendering with updated positions
         let sprite_offset = Vector::new(self.config.sprite_width as f32 * self.config.sprite_scale / 2., self.config.sprite_height as f32 * self.config.sprite_scale / 2.);
