@@ -74,19 +74,22 @@ impl Application {
                     }
     
                     // once unparked, we can calculate the frame with the dt
-                    let read = entities.read().unwrap();
-                    let accelerations: Vec<Vector> = read.iter()
-                        .skip(i)
-                        .step_by(num_threads)
-                        .map(|particle| {
-                            net_acceleration(read.iter(), particle)
-                        })
-                        .collect();
-                    drop(read); // need to drop read lock to prevent a deadlock
+                    let accelerations: Vec<Vector> = {
+                        let entities_lock = entities.read().unwrap();
+                        entities_lock.iter()
+                            .skip(i)
+                            .step_by(num_threads)
+                            .map(|particle| {
+                                net_acceleration(&entities_lock, particle)
+                            })
+                            .collect()
+                    };
     
-                    let dt_guard = dt_lock.read().unwrap();
-                    let dt = *dt_guard;
-                    drop(dt_guard);
+                    let dt = {
+                        let dt_guard = dt_lock.read().unwrap();
+                        *dt_guard
+                    };
+
                     {
                         let mut write = entities.write().unwrap();
                         write.iter_mut()
@@ -102,6 +105,7 @@ impl Application {
     
                     // wait until each thread has calculated the frame
                     let is_leader = barrier.wait();
+
                     if is_leader.is_leader() {
                         let (lock, _) = &*start_frame;
                         let mut start = lock.lock().unwrap();
@@ -120,6 +124,29 @@ impl Application {
             }));
         }
         handles
+    }
+
+    fn update_position(&mut self) {
+         // update dt
+        {   
+            let mut dt = self.dt.write().unwrap();
+            *dt = self.time.elapsed().as_secs_f32() * self.time_scale;
+        }
+
+        // unpark threads
+        {
+            let (lock, cvar) = &*self.calc_frame_cond;
+            let mut flag = lock.lock().unwrap();
+            *flag = false;
+            cvar.notify_all();
+        }
+        
+        // wait until threads done calculating frame
+        let (lock, cvar) = &*self.finished_frame_cond;
+        let _guard = cvar.wait_while(lock.lock().unwrap(), |pending| { *pending }).unwrap();
+
+        // update time to get dt for next frame
+        self.time = Instant::now();
     }
 
     /// Generate particles randomly in different position with different velocities.
@@ -200,30 +227,12 @@ impl Game for Application {
         // update particles and benchmark times
         let benchmark_time = Instant::now();
 
-        // update dt
-        {   
-            let mut dt = self.dt.write().unwrap();
-            *dt = self.time.elapsed().as_secs_f32() * self.time_scale;
-        }
-        // unpark threads
-        {
-            let (lock, cvar) = &*self.calc_frame_cond;
-            let mut flag = lock.lock().unwrap();
-            *flag = false;
-            cvar.notify_all();
-        }
-        
-        // wait until threads done calculating frame
-        let pair = Arc::clone(&self.finished_frame_cond);
-        let (lock, cvar) = &*pair;
-        let _guard = cvar.wait_while(lock.lock().unwrap(), |pending| { *pending }).unwrap();
+        self.update_position();
         
         match self.benchmark.status {
             BenchmarkStatus::Running => self.benchmark.increase_elapsed_time(benchmark_time.elapsed().as_secs_f64()),
             BenchmarkStatus::Paused | BenchmarkStatus::Finished => {},
         }
-        
-        self.time = Instant::now();
 
         // create sprites for rendering with updated positions
         let sprite_offset = Vector::new(self.config.sprite_width as f32 * self.config.sprite_scale / 2., self.config.sprite_height as f32 * self.config.sprite_scale / 2.);
