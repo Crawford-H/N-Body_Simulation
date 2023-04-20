@@ -131,6 +131,7 @@ impl Application {
         {   
             let mut dt = self.dt.write().unwrap();
             *dt = self.time.elapsed().as_secs_f32() * self.time_scale;
+            self.time = Instant::now();
         }
 
         // unpark threads
@@ -143,10 +144,13 @@ impl Application {
         
         // wait until threads done calculating frame
         let (lock, cvar) = &*self.finished_frame_cond;
-        let _guard = cvar.wait_while(lock.lock().unwrap(), |pending| { *pending }).unwrap();
-
-        // update time to get dt for next frame
-        self.time = Instant::now();
+        {
+            let _guard = cvar.wait_while(lock.lock().unwrap(), |pending| { *pending }).unwrap();
+        }
+        {
+            let mut pending = lock.lock().unwrap();
+            *pending = true;
+        }
     }
 
     /// Generate particles randomly in different position with different velocities.
