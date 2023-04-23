@@ -69,8 +69,8 @@ impl Application {
                 // wait until unparked to calculate frame
                 loop {
                     {
-                        let (lock, cvar) = &*start_frame;
-                        let _guard = cvar.wait_while(lock.lock().unwrap(), |x| { *x }).unwrap();
+                        let (waiting, cvar) = &*start_frame;
+                        let _guard = cvar.wait_while(waiting.lock().unwrap(), |wait| { *wait }).unwrap();
                     }
     
                     // once unparked, we can calculate the frame with the dt
@@ -85,10 +85,7 @@ impl Application {
                             .collect()
                     };
     
-                    let dt = {
-                        let dt_guard = dt_lock.read().unwrap();
-                        *dt_guard
-                    };
+                    let dt = { *dt_lock.read().unwrap() };
 
                     {
                         let mut write = entities.write().unwrap();
@@ -107,9 +104,8 @@ impl Application {
                     let is_leader = barrier.wait();
 
                     if is_leader.is_leader() {
-                        let (lock, _) = &*start_frame;
-                        let mut start = lock.lock().unwrap();
-                        *start = true;
+                        let (waiting, _) = &*start_frame;
+                        *waiting.lock().unwrap() = true;
                     }
                     
                     // message main thread to continue loop
@@ -120,6 +116,8 @@ impl Application {
                         *pending = false;
                         cvar.notify_one();
                     }
+
+                    let _ = barrier.wait();
                 }   
             }));
         }
@@ -128,29 +126,26 @@ impl Application {
 
     fn update_position(&mut self) {
          // update dt
-        {   
-            let mut dt = self.dt.write().unwrap();
-            *dt = self.time.elapsed().as_secs_f32() * self.time_scale;
-            self.time = Instant::now();
-        }
+        let mut dt = self.dt.write().unwrap();
+        *dt = self.time.elapsed().as_secs_f32() * self.time_scale;
+        drop(dt);
+        self.time = Instant::now();
 
         // unpark threads
-        {
-            let (lock, cvar) = &*self.calc_frame_cond;
-            let mut flag = lock.lock().unwrap();
-            *flag = false;
-            cvar.notify_all();
-        }
+        let (lock, cvar) = &*self.calc_frame_cond;
+        let mut flag = lock.lock().unwrap();
+        *flag = false;
+        drop(flag);
+        cvar.notify_all();
         
         // wait until threads done calculating frame
         let (lock, cvar) = &*self.finished_frame_cond;
-        {
-            let _guard = cvar.wait_while(lock.lock().unwrap(), |pending| { *pending }).unwrap();
+        let mut pending = lock.lock().unwrap();
+        while *pending {
+            pending = cvar.wait(pending).unwrap();
         }
-        {
-            let mut pending = lock.lock().unwrap();
-            *pending = true;
-        }
+        *pending = true;
+        
     }
 
     /// Generate particles randomly in different position with different velocities.
