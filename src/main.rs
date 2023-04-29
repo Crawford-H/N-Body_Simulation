@@ -1,18 +1,13 @@
-/// Author: Crawford Heidinger
-/// Student number: 100753120
-
-use app::Application;
-use coffee::{Result, graphics::WindowSettings, ui::UserInterface};
-
-mod app;
-mod config;
 mod particle;
-mod benchmark;
+mod application;
+mod world;
 
+use coffee::{graphics::WindowSettings, Game};
 
-/// Entry point to the program.
-fn main() -> Result<()> {
-    <Application as UserInterface>::run(WindowSettings {
+use crate::application::Application;
+
+fn main() -> Result<(), coffee::Error> {
+    Application::run(WindowSettings {
         title: String::from("Particle Physics Simulator"),
         size: (1920, 1080),
         resizable: true,
