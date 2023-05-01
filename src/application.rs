@@ -1,7 +1,9 @@
 use std::time::Instant;
 
-use coffee::graphics::{Point, Transformation, Batch, Color, Frame, Window, Image, Vector, Sprite, Rectangle};
-use coffee::input::{KeyboardAndMouse, keyboard, mouse};
+use coffee::graphics::{
+    Batch, Color, Frame, Image, Point, Rectangle, Sprite, Transformation, Vector, Window,
+};
+use coffee::input::{keyboard, mouse, KeyboardAndMouse};
 use coffee::load::Task;
 use coffee::{Game, Timer};
 use glam::DVec2;
@@ -14,25 +16,29 @@ const SPRITE_FILE: &str = "resources/star.png";
 const SPRITE_WIDTH: f32 = 512.;
 const SPRITE_HEIGHT: f32 = 512.;
 const SPRITE_SCALE: f32 = 0.025;
-const SPRITE_SOURCE: Rectangle<u16> = Rectangle { x: 0, y: 0, height: SPRITE_HEIGHT as u16, width: SPRITE_WIDTH as u16 };
+const SPRITE_SOURCE: Rectangle<u16> = Rectangle {
+    x: 0,
+    y: 0,
+    height: SPRITE_HEIGHT as u16,
+    width: SPRITE_WIDTH as u16,
+};
 const HORIZONTAL_OFFSET: f32 = SPRITE_WIDTH * SPRITE_SCALE / 2.;
 const VERTICAL_OFFSET: f32 = SPRITE_HEIGHT * SPRITE_SCALE / 2.;
 
 // constants for rendering and processing
 const NUM_THREADS: usize = 20;
-const HEIGHT: u32 = 1024;
-const WIDTH: u32 = 1024;
+const HEIGHT: u32 = 1080;
+const WIDTH: u32 = 1920;
 
 // defaults for creating world
 const DEFAULT_TIME_SCALE: f64 = 50.;
 const DEFAULT_WORLD_SCALE: f32 = 1.;
 
-
 pub struct Application {
     // member variables for data on world
     world: World,
     time_since_last_frame: Instant,
-    
+
     // member variables for rendering
     camera_position: Point,
     camera_transform: Transformation,
@@ -46,19 +52,15 @@ impl Game for Application {
     type LoadingScreen = (); // No loading screen
 
     fn load(_window: &Window) -> Task<Application> {
-        Task::stage("Loading sprites...", Image::load(SPRITE_FILE))
-            .map(|sprite| {
-                Application {
-                    world: World::new(NUM_THREADS), 
-                    time_scale: DEFAULT_TIME_SCALE, 
-                    world_scale: DEFAULT_WORLD_SCALE, 
-                    camera_position: Point::new((WIDTH / 2) as f32, (HEIGHT / 2) as f32), 
-                    camera_transform: Transformation::identity(), 
-                    batch: Batch::new(sprite),
-                    time_since_last_frame: Instant::now(), 
-                }
-            }
-        )
+        Task::stage("Loading sprites...", Image::load(SPRITE_FILE)).map(|sprite| Application {
+            world: World::new(NUM_THREADS),
+            time_scale: DEFAULT_TIME_SCALE,
+            world_scale: DEFAULT_WORLD_SCALE,
+            camera_position: Point::new((WIDTH / 2) as f32, (HEIGHT / 2) as f32),
+            camera_transform: Transformation::identity(),
+            batch: Batch::new(sprite),
+            time_since_last_frame: Instant::now(),
+        })
     }
 
     fn draw(&mut self, frame: &mut Frame, _timer: &Timer) {
@@ -77,15 +79,11 @@ impl Game for Application {
 
         // generate particles to draw
         let particles_lock = self.world.particles.read().unwrap();
-        let sprites = particles_lock
-            .par_iter()
-            .map(|particle| {
-                Sprite {
-                    source: SPRITE_SOURCE,
-                    position: Point::new(particle.position.x as f32, particle.position.y as f32) * self.world_scale - Vector::new(HORIZONTAL_OFFSET, VERTICAL_OFFSET),
-                    scale: (SPRITE_SCALE, SPRITE_SCALE),
-                }
-            });
+        let sprites = particles_lock.par_iter().map(|particle| Sprite {
+            source: SPRITE_SOURCE,
+            position: Point::new(particle.position.x as f32, particle.position.y as f32) * self.world_scale - Vector::new(HORIZONTAL_OFFSET, VERTICAL_OFFSET),
+            scale: (SPRITE_SCALE, SPRITE_SCALE),
+        });
 
         // render screen
         self.batch.clear();
@@ -101,10 +99,18 @@ impl Game for Application {
 
         // create particles
         if input.mouse().is_button_pressed(mouse::Button::Left) {
-            self.world.create_particle(DVec2::new(x_position, y_position), DVec2::new(0., 0.), 1.0e2)
+            self.world.create_particle(
+                DVec2::new(x_position, y_position),
+                DVec2::new(0., 0.),
+                1.0e2,
+            )
         }
         if input.keyboard().was_key_released(keyboard::KeyCode::Key1) {
-            self.world.create_particle(DVec2::new(x_position, y_position), DVec2::new(0., 0.), 1.0e12)
+            self.world.create_particle(
+                DVec2::new(x_position, y_position),
+                DVec2::new(0., 0.),
+                1.0e12,
+            )
         }
 
         // move camera

@@ -1,5 +1,5 @@
-mod particle;
 mod application;
+mod particle;
 mod world;
 
 use coffee::{graphics::WindowSettings, Game};

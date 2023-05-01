@@ -19,10 +19,10 @@ fn acceleration(lhs: &Particle, rhs: &Particle) -> DVec2 {
 }
 
 /// Calculates the net acceleartiong on a particle caused by each particle in a vector
-pub fn net_acceleration(particle: &Particle, particles: &Vec<Particle>) -> DVec2 {
+pub fn net_acceleration(particle: &Particle, particles: &[Particle]) -> DVec2 {
     particles
-       .iter()
-       .filter(|other| particle.id != other.id)
-       .map(|other| acceleration(&particle, other))
-       .sum()
+        .iter()
+        .filter(|other| particle.id != other.id)
+        .map(|other| acceleration(particle, other))
+        .sum()
 }
