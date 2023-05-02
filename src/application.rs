@@ -24,12 +24,10 @@ const SPRITE_SOURCE: Rectangle<u16> = Rectangle {
 };
 const HORIZONTAL_OFFSET: f32 = SPRITE_WIDTH * SPRITE_SCALE / 2.;
 const VERTICAL_OFFSET: f32 = SPRITE_HEIGHT * SPRITE_SCALE / 2.;
-
 // constants for rendering and processing
 const NUM_THREADS: usize = 20;
 const HEIGHT: u32 = 1080;
 const WIDTH: u32 = 1920;
-
 // defaults for creating world
 const DEFAULT_TIME_SCALE: f64 = 50.;
 const DEFAULT_WORLD_SCALE: f32 = 1.;
@@ -101,14 +99,14 @@ impl Game for Application {
         if input.mouse().is_button_pressed(mouse::Button::Left) {
             self.world.create_particle(
                 DVec2::new(x_position, y_position),
-                DVec2::new(0., 0.),
+                DVec2::ZERO,
                 1.0e2,
             )
         }
         if input.keyboard().was_key_released(keyboard::KeyCode::Key1) {
             self.world.create_particle(
                 DVec2::new(x_position, y_position),
-                DVec2::new(0., 0.),
+                DVec2::ZERO,
                 1.0e12,
             )
         }

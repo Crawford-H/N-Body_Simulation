@@ -1,14 +1,16 @@
+use std::sync::atomic::Ordering;
 use std::sync::{Arc, Barrier, RwLock};
 use std::thread::{self, JoinHandle};
 
+use atomic_float::AtomicF64;
 use glam::DVec2;
 
-use crate::particle::{net_acceleration, Particle};
+use crate::particle::Particle;
 
 pub struct World {
     pub particles: Arc<RwLock<Vec<Particle>>>,
     pub particle_count: usize,
-    dt: Arc<RwLock<f64>>,
+    dt: Arc<AtomicF64>,
     barrier: Arc<Barrier>,
     threads: Vec<JoinHandle<()>>,
     num_threads: usize,
@@ -20,7 +22,7 @@ impl World {
         let mut world = World {
             particles: Arc::new(RwLock::new(Vec::new())),
             threads: Vec::new(),
-            dt: Arc::new(RwLock::new(0.)),
+            dt: Arc::new(AtomicF64::new(0.)),
             particle_count: 0,
             barrier: Arc::new(Barrier::new(num_threads)),
             num_threads,
@@ -32,9 +34,7 @@ impl World {
     /// Updates the particles with a given delta time.
     pub fn update(&mut self, dt: f64) {
         // update the delta time for threads to use
-        {
-            *self.dt.write().unwrap() = dt;
-        }
+        self.dt.store(dt, Ordering::Release);
         // main thread starts processing which starts worker threads also as barrier will be unlocked.
         process_particles(
             &self.barrier,
@@ -75,14 +75,14 @@ impl World {
 fn process_particles(
     barrier: &Arc<Barrier>,
     particles: &Arc<RwLock<Vec<Particle>>>,
-    dt: &Arc<RwLock<f64>>,
+    dt: &Arc<AtomicF64>,
     thread_id: usize,
     num_threads: usize,
 ) {
     // wait until all threads ready to process particles, this will be locked until the main thread calls this function which will happen when the update method is called
     let _ = barrier.wait();
 
-    let dt_copy = { *dt.read().unwrap() }; // get the dt to calculate new velocities and positions
+    let dt_copy = dt.load(Ordering::Acquire); // get the dt to calculate new velocities and positions
 
     // calculate accelerations of particles
     let particles_read_lock = particles.read().unwrap();
@@ -90,7 +90,7 @@ fn process_particles(
         .iter()
         .skip(thread_id)
         .step_by(num_threads)
-        .map(|particle| net_acceleration(particle, &particles_read_lock) * dt_copy)
+        .map(|particle| particle.net_acceleration(&particles_read_lock) * dt_copy)
         .collect();
     drop(particles_read_lock);
 
@@ -101,8 +101,8 @@ fn process_particles(
         .skip(thread_id)
         .step_by(num_threads)
         .zip(velocities)
-        .for_each(|(particle, velocities)| {
-            particle.velocity += velocities;
+        .for_each(|(particle, velocity)| {
+            particle.velocity += velocity;
             particle.position += particle.velocity * dt_copy;
         });
     drop(particles_write_lock);

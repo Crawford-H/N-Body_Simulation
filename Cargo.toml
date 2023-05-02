@@ -10,3 +10,4 @@ opt-level = 3
 glam = "0.24.*"
 coffee = { version = "0.4.*", features = ["opengl", "debug"] }
 rayon = "1.7.*"
+atomic_float = "0.1.*"
