@@ -1,13 +1,14 @@
 use std::sync::atomic::Ordering;
-use std::sync::{Arc, Barrier, RwLock};
+use std::sync::{Arc, Barrier};
 use std::thread::{self, JoinHandle};
 
 use atomic_float::AtomicF64;
 use glam::DVec2;
+use parking_lot::RwLock;
 
 use crate::particle::Particle;
 
-pub struct World {
+pub struct WorldWorkerThreads {
     pub particles: Arc<RwLock<Vec<Particle>>>,
     pub particle_count: usize,
     dt: Arc<AtomicF64>,
@@ -16,10 +17,10 @@ pub struct World {
     num_threads: usize,
 }
 
-impl World {
+impl WorldWorkerThreads {
     /// Creates a new [`World`] with a given amount of worker threads.
     pub fn new(num_threads: usize) -> Self {
-        let mut world = World {
+        let mut world = WorldWorkerThreads {
             particles: Arc::new(RwLock::new(Vec::new())),
             threads: Vec::new(),
             dt: Arc::new(AtomicF64::new(0.)),
@@ -47,7 +48,7 @@ impl World {
 
     /// Add a new [`Particle`] to the world.
     pub fn create_particle(&mut self, position: DVec2, velocity: DVec2, mass: f64) {
-        self.particles.write().unwrap().push(Particle {
+        self.particles.write().push(Particle {
             id: self.particle_count,
             velocity,
             position,
@@ -85,7 +86,7 @@ fn process_particles(
     let dt_copy = dt.load(Ordering::Acquire); // get the dt to calculate new velocities and positions
 
     // calculate accelerations of particles
-    let particles_read_lock = particles.read().unwrap();
+    let particles_read_lock = particles.read();
     let velocities: Vec<DVec2> = particles_read_lock
         .iter()
         .skip(thread_id)
@@ -95,7 +96,7 @@ fn process_particles(
     drop(particles_read_lock);
 
     // update particle velocities and position with accelerations calculated
-    let mut particles_write_lock = particles.write().unwrap();
+    let mut particles_write_lock = particles.write();
     particles_write_lock
         .iter_mut()
         .skip(thread_id)

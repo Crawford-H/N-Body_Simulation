@@ -9,7 +9,7 @@ use coffee::{Game, Timer};
 use glam::DVec2;
 use rayon::prelude::*;
 
-use crate::world::World;
+use crate::world::WorldWorkerThreads;
 
 // sprite constants
 const SPRITE_FILE: &str = "resources/star.png";
@@ -34,12 +34,11 @@ const DEFAULT_WORLD_SCALE: f32 = 1.;
 
 pub struct Application {
     // member variables for data on world
-    world: World,
+    world: WorldWorkerThreads,
     time_since_last_frame: Instant,
 
     // member variables for rendering
     camera_position: Point,
-    camera_transform: Transformation,
     world_scale: f32,
     time_scale: f64,
     batch: Batch,
@@ -51,11 +50,10 @@ impl Game for Application {
 
     fn load(_window: &Window) -> Task<Application> {
         Task::stage("Loading sprites...", Image::load(SPRITE_FILE)).map(|sprite| Application {
-            world: World::new(NUM_THREADS),
+            world: WorldWorkerThreads::new(NUM_THREADS),
             time_scale: DEFAULT_TIME_SCALE,
             world_scale: DEFAULT_WORLD_SCALE,
             camera_position: Point::new((WIDTH / 2) as f32, (HEIGHT / 2) as f32),
-            camera_transform: Transformation::identity(),
             batch: Batch::new(sprite),
             time_since_last_frame: Instant::now(),
         })
@@ -67,8 +65,8 @@ impl Game for Application {
 
         // update camera position
         let mut target = frame.as_target();
-        self.camera_transform = Transformation::translate(Vector::new(self.camera_position.x, self.camera_position.y));
-        let mut camera = target.transform(self.camera_transform);
+        let camera_transform = Transformation::translate(Vector::new(self.camera_position.x, self.camera_position.y));
+        let mut camera = target.transform(camera_transform);
 
         // update particles in world
         let dt = self.time_since_last_frame.elapsed().as_secs_f64() * self.time_scale;
@@ -76,7 +74,7 @@ impl Game for Application {
         self.world.update(dt);
 
         // generate particles to draw
-        let particles_lock = self.world.particles.read().unwrap();
+        let particles_lock = self.world.particles.read();
         let sprites = particles_lock.par_iter().map(|particle| Sprite {
             source: SPRITE_SOURCE,
             position: Point::new(particle.position.x as f32, particle.position.y as f32) * self.world_scale - Vector::new(HORIZONTAL_OFFSET, VERTICAL_OFFSET),

@@ -13,7 +13,7 @@ pub struct Particle {
 impl Particle {
     pub fn acceleration(&self, rhs: &Particle) -> DVec2 {
         let r = self.position - rhs.position;
-        NEG_G * rhs.mass * r * r.length().powi(3).recip() // a = (-GM/|r|^2) * (r / |r|) = (-GMr) / |r|^3
+        NEG_G * rhs.mass * r / r.length().powi(3) // a = (-GM/|r|^2) * (r / |r|) = (-GMr) / |r|^3
     }
 
     pub fn net_acceleration(&self, particles: &[Particle]) -> DVec2 {
