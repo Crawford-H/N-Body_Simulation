@@ -1,6 +1,9 @@
 mod application;
 mod particle;
 mod world;
+mod worker_threads;
+mod sequential_world;
+mod rayon_world;
 
 use coffee::{graphics::WindowSettings, Game};
 

@@ -9,7 +9,7 @@ use coffee::{Game, Timer};
 use glam::DVec2;
 use rayon::prelude::*;
 
-use crate::world::WorldWorkerThreads;
+use crate::{worker_threads::WorldWorkerThreads, world::World};
 
 // sprite constants
 const SPRITE_FILE: &str = "resources/star.png";
