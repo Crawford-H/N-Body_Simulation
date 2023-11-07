@@ -9,7 +9,10 @@ use coffee::{Game, Timer};
 use glam::DVec2;
 use rayon::prelude::*;
 
-use crate::{worker_threads::WorldWorkerThreads, world::World};
+use crate::rayon_world::RayonWorld;
+use crate::sequential_world::SequentialWorld;
+use crate::worker_threads::WorldWorkerThreads;
+use crate::world::World;
 
 // sprite constants
 const SPRITE_FILE: &str = "resources/star.png";
@@ -32,9 +35,17 @@ const WIDTH: u32 = 1920;
 const DEFAULT_TIME_SCALE: f64 = 50.;
 const DEFAULT_WORLD_SCALE: f32 = 1.;
 
+#[derive(Debug)]
+enum WorldType {
+    WorkerThreads,
+    Rayon,
+    Sequential,
+}
+
 pub struct Application {
     // member variables for data on world
-    world: WorldWorkerThreads,
+    world: Box<dyn World>,
+    world_type: WorldType,
     time_since_last_frame: Instant,
 
     // member variables for rendering
@@ -44,13 +55,27 @@ pub struct Application {
     batch: Batch,
 }
 
+impl Application {
+    fn change_world_algorithm(&mut self, new_algorithm: WorldType) {
+        println!("Changed algorithm to {:?}", new_algorithm);
+        self.world_type = new_algorithm;
+        let particles = self.world.get_particles();
+        self.world = match self.world_type {
+            WorldType::WorkerThreads => Box::new(WorldWorkerThreads::new(NUM_THREADS, particles)),
+            WorldType::Rayon => Box::new(RayonWorld { particles }),
+            WorldType::Sequential => Box::new(SequentialWorld { particles }),
+        };
+    }
+}
+
 impl Game for Application {
     type Input = KeyboardAndMouse; // No input data
     type LoadingScreen = (); // No loading screen
 
     fn load(_window: &Window) -> Task<Application> {
         Task::stage("Loading sprites...", Image::load(SPRITE_FILE)).map(|sprite| Application {
-            world: WorldWorkerThreads::new(NUM_THREADS),
+            world: Box::new(WorldWorkerThreads::new(NUM_THREADS, Vec::new())),
+            world_type: WorldType::WorkerThreads,
             time_scale: DEFAULT_TIME_SCALE,
             world_scale: DEFAULT_WORLD_SCALE,
             camera_position: Point::new((WIDTH / 2) as f32, (HEIGHT / 2) as f32),
@@ -74,8 +99,8 @@ impl Game for Application {
         self.world.update(dt);
 
         // generate particles to draw
-        let particles_lock = self.world.particles.read();
-        let sprites = particles_lock.par_iter().map(|particle| Sprite {
+        let particles = self.world.get_particles();
+        let sprites = particles.par_iter().map(|particle| Sprite {
             source: SPRITE_SOURCE,
             position: Point::new(particle.position.x as f32, particle.position.y as f32) * self.world_scale - Vector::new(HORIZONTAL_OFFSET, VERTICAL_OFFSET),
             scale: (SPRITE_SCALE, SPRITE_SCALE),
@@ -92,6 +117,15 @@ impl Game for Application {
         let cursor_position = input.mouse().cursor_position();
         let x_position = ((cursor_position.x - self.camera_position.x) / self.world_scale) as f64;
         let y_position = ((cursor_position.y - self.camera_position.y) / self.world_scale) as f64;
+
+        // change world algorithm
+        if input.keyboard().was_key_released(keyboard::KeyCode::Tab) {
+            match self.world_type {
+                WorldType::WorkerThreads => self.change_world_algorithm(WorldType::Rayon),
+                WorldType::Rayon => self.change_world_algorithm(WorldType::Sequential),
+                WorldType::Sequential => self.change_world_algorithm(WorldType::WorkerThreads),
+            }
+        }
 
         // create particles
         if input.mouse().is_button_pressed(mouse::Button::Left) {

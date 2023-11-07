@@ -39,7 +39,6 @@ impl World for WorldWorkerThreads {
             mass,
         });
         self.particle_count += 1;
-        println!("Particle {} added to world", self.particle_count);
     }
 
     fn get_particles(&mut self) -> Vec<Particle> {
@@ -49,9 +48,9 @@ impl World for WorldWorkerThreads {
 
 impl WorldWorkerThreads {
     /// Creates a new [`World`] with a given amount of worker threads.
-    pub fn new(num_threads: usize) -> Self {
+    pub fn new(num_threads: usize, particles: Vec<Particle>) -> Self {
         let mut world = WorldWorkerThreads {
-            particles: Arc::new(RwLock::new(Vec::new())),
+            particles: Arc::new(RwLock::new(particles)),
             threads: Vec::new(),
             dt: Arc::new(AtomicF64::new(0.)),
             particle_count: 0,

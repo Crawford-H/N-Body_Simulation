@@ -8,9 +8,9 @@ impl World for SequentialWorld {
     fn update(&mut self, dt: f64) {
         let particles_clone = self.particles.clone();
         for particle in self.particles.iter_mut() {
-            let velocity = particle.net_acceleration(&particles_clone) * dt;
-            particle.velocity += velocity;
-            particle.position += velocity * dt;
+            let acceleration = particle.net_acceleration(&particles_clone) * dt;
+            particle.velocity += acceleration * dt;
+            particle.position += particle.velocity * dt;
         }
     }
 
