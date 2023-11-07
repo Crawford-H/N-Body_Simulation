@@ -1,8 +1,6 @@
 use std::time::Instant;
 
-use coffee::graphics::{
-    Batch, Color, Frame, Image, Point, Rectangle, Sprite, Transformation, Vector, Window,
-};
+use coffee::graphics::{Batch, Color, Frame, Image, Point, Sprite, Transformation, Vector, Window};
 use coffee::input::{keyboard, mouse, KeyboardAndMouse};
 use coffee::load::Task;
 use coffee::{Game, Timer};
@@ -13,27 +11,7 @@ use crate::rayon_world::RayonWorld;
 use crate::sequential_world::SequentialWorld;
 use crate::worker_threads::WorldWorkerThreads;
 use crate::world::World;
-
-// sprite constants
-const SPRITE_FILE: &str = "resources/star.png";
-const SPRITE_WIDTH: f32 = 512.;
-const SPRITE_HEIGHT: f32 = 512.;
-const SPRITE_SCALE: f32 = 0.025;
-const SPRITE_SOURCE: Rectangle<u16> = Rectangle {
-    x: 0,
-    y: 0,
-    height: SPRITE_HEIGHT as u16,
-    width: SPRITE_WIDTH as u16,
-};
-const HORIZONTAL_OFFSET: f32 = SPRITE_WIDTH * SPRITE_SCALE / 2.;
-const VERTICAL_OFFSET: f32 = SPRITE_HEIGHT * SPRITE_SCALE / 2.;
-// constants for rendering and processing
-const NUM_THREADS: usize = 20;
-const HEIGHT: u32 = 1080;
-const WIDTH: u32 = 1920;
-// defaults for creating world
-const DEFAULT_TIME_SCALE: f64 = 50.;
-const DEFAULT_WORLD_SCALE: f32 = 1.;
+use crate::config::Config;
 
 #[derive(Debug)]
 enum WorldType {
@@ -43,6 +21,8 @@ enum WorldType {
 }
 
 pub struct Application {
+    config: Config,
+
     // member variables for data on world
     world: Box<dyn World>,
     world_type: WorldType,
@@ -61,7 +41,7 @@ impl Application {
         self.world_type = new_algorithm;
         let particles = self.world.get_particles();
         self.world = match self.world_type {
-            WorldType::WorkerThreads => Box::new(WorldWorkerThreads::new(NUM_THREADS, particles)),
+            WorldType::WorkerThreads => Box::new(WorldWorkerThreads::new(self.config.num_threads, particles)),
             WorldType::Rayon => Box::new(RayonWorld { particles }),
             WorldType::Sequential => Box::new(SequentialWorld { particles }),
         };
@@ -73,14 +53,18 @@ impl Game for Application {
     type LoadingScreen = (); // No loading screen
 
     fn load(_window: &Window) -> Task<Application> {
-        Task::stage("Loading sprites...", Image::load(SPRITE_FILE)).map(|sprite| Application {
-            world: Box::new(WorldWorkerThreads::new(NUM_THREADS, Vec::new())),
-            world_type: WorldType::WorkerThreads,
-            time_scale: DEFAULT_TIME_SCALE,
-            world_scale: DEFAULT_WORLD_SCALE,
-            camera_position: Point::new((WIDTH / 2) as f32, (HEIGHT / 2) as f32),
-            batch: Batch::new(sprite),
-            time_since_last_frame: Instant::now(),
+        let config = Config::new();
+
+        Task::stage("Loading sprites...", Image::load(config.sprite_file.as_str())).map(|sprite| 
+            Application {
+                world: Box::new(WorldWorkerThreads::new(config.num_threads, Vec::new())),
+                world_type: WorldType::WorkerThreads,
+                time_scale: config.default_time_scale,
+                world_scale: config.default_world_scale,
+                camera_position: Point::new((config.screen_width / 2) as f32, (config.screen_height / 2) as f32),
+                batch: Batch::new(sprite),
+                time_since_last_frame: Instant::now(),
+                config
         })
     }
 
@@ -101,9 +85,9 @@ impl Game for Application {
         // generate particles to draw
         let particles = self.world.get_particles();
         let sprites = particles.par_iter().map(|particle| Sprite {
-            source: SPRITE_SOURCE,
-            position: Point::new(particle.position.x as f32, particle.position.y as f32) * self.world_scale - Vector::new(HORIZONTAL_OFFSET, VERTICAL_OFFSET),
-            scale: (SPRITE_SCALE, SPRITE_SCALE),
+            source: self.config.sprite_source,
+            position: Point::new(particle.position.x as f32, particle.position.y as f32) * self.world_scale - Vector::new(self.config.horizontal_offset, self.config.vertical_offset),
+            scale: (self.config.sprite_scale, self.config.sprite_scale),
         });
 
         // render screen

@@ -89,18 +89,16 @@ fn process_particles(
     let dt_copy = dt.load(Ordering::Acquire); // get the dt to calculate new velocities and positions
 
     // calculate accelerations of particles
-    let particles_read_lock = particles.read();
-    let velocities: Vec<DVec2> = particles_read_lock
+    let particles_read = particles.read().clone();
+    let velocities: Vec<DVec2> = particles_read
         .iter()
         .skip(thread_id)
         .step_by(num_threads)
-        .map(|particle| particle.net_acceleration(&particles_read_lock) * dt_copy)
+        .map(|particle| particle.net_acceleration(&particles_read) * dt_copy)
         .collect();
-    drop(particles_read_lock);
 
     // update particle velocities and position with accelerations calculated
-    let mut particles_write_lock = particles.write();
-    particles_write_lock
+    particles.write()
         .iter_mut()
         .skip(thread_id)
         .step_by(num_threads)
@@ -109,7 +107,6 @@ fn process_particles(
             particle.velocity += velocity;
             particle.position += particle.velocity * dt_copy;
         });
-    drop(particles_write_lock);
 
     // wait until each thread is finished updating particle positions
     let _ = barrier.wait();

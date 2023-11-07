@@ -4,6 +4,7 @@ mod world;
 mod worker_threads;
 mod sequential_world;
 mod rayon_world;
+mod config;
 
 use coffee::{graphics::WindowSettings, Game};
 
