@@ -7,10 +7,7 @@ use coffee::{Game, Timer};
 use glam::DVec2;
 use rayon::prelude::*;
 
-use crate::rayon_world::RayonWorld;
-use crate::sequential_world::SequentialWorld;
-use crate::worker_threads::WorldWorkerThreads;
-use crate::world::World;
+use crate::world::{World, WorkerThreadsWorld, RayonWorld, SequentialWorld};
 use crate::config::Config;
 
 #[derive(Debug)]
@@ -22,12 +19,10 @@ enum WorldType {
 
 pub struct Application {
     config: Config,
-
     // member variables for data on world
     world: Box<dyn World>,
     world_type: WorldType,
     time_since_last_frame: Instant,
-
     // member variables for rendering
     camera_position: Point,
     world_scale: f32,
@@ -41,7 +36,7 @@ impl Application {
         self.world_type = new_algorithm;
         let particles = self.world.get_particles();
         self.world = match self.world_type {
-            WorldType::WorkerThreads => Box::new(WorldWorkerThreads::new(self.config.num_threads, particles)),
+            WorldType::WorkerThreads => Box::new(WorkerThreadsWorld::new(self.config.num_threads, particles)),
             WorldType::Rayon => Box::new(RayonWorld { particles }),
             WorldType::Sequential => Box::new(SequentialWorld { particles }),
         };
@@ -57,7 +52,7 @@ impl Game for Application {
 
         Task::stage("Loading sprites...", Image::load(config.sprite_file.as_str())).map(|sprite| 
             Application {
-                world: Box::new(WorldWorkerThreads::new(config.num_threads, Vec::new())),
+                world: Box::new(WorkerThreadsWorld::new(config.num_threads, Vec::new())),
                 world_type: WorldType::WorkerThreads,
                 time_scale: config.default_time_scale,
                 world_scale: config.default_world_scale,

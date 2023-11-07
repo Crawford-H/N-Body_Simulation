@@ -23,15 +23,15 @@ pub struct Config {
 impl Config {
     pub fn new() -> Config {
         dotenv().ok();
-        let sprite_file = std::env::var("SPRITE_FILE").expect("Environment variable SPRITE_FILE missing").parse().unwrap();
-        let sprite_width = std::env::var("SPRITE_WIDTH").expect("Environment variable SPRITE_WIDTH missing").parse().unwrap();
-        let sprite_height = std::env::var("SPRITE_HEIGHT").expect("Environment variable SPRITE_HEIGHT missing").parse().unwrap();
-        let sprite_scale = std::env::var("SPRITE_SCALE").expect("Environment variable SPRITE_SCALE missing").parse().unwrap();
-        let num_threads = std::env::var("NUM_THREADS").expect("Environment variable NUM_THREADS missing").parse().unwrap();
-        let screen_height = std::env::var("SCREEN_HEIGHT").expect("Environment variable SCREEN_HEIGHT missing").parse().unwrap();
-        let screen_width = std::env::var("SCREEN_WIDTH").expect("Environment variable SCREEN_WIDTH missing").parse().unwrap();
-        let default_time_scale = std::env::var("DEFAULT_TIME_SCALE").expect("Environment variable DEFAULT_TIME_SCALE missing").parse().unwrap();
-        let default_world_scale = std::env::var("DEFAULT_WORLD_SCALE").expect("Environment variable DEFAULT_WORLD_SCALE missing").parse().unwrap();
+        let sprite_file = std::env::var("SPRITE_FILE").expect("Environment variable 'SPRITE_FILE' missing").parse().unwrap();
+        let sprite_width = std::env::var("SPRITE_WIDTH").expect("Environment variable 'SPRITE_WIDTH' missing").parse().unwrap();
+        let sprite_height = std::env::var("SPRITE_HEIGHT").expect("Environment variable 'SPRITE_HEIGHT' missing").parse().unwrap();
+        let sprite_scale = std::env::var("SPRITE_SCALE").expect("Environment variable 'SPRITE_SCALE' missing").parse().unwrap();
+        let num_threads = std::env::var("NUM_THREADS").expect("Environment variable 'NUM_THREADS' missing").parse().unwrap();
+        let screen_height = std::env::var("SCREEN_HEIGHT").expect("Environment variable 'SCREEN_HEIGHT' missing").parse().unwrap();
+        let screen_width = std::env::var("SCREEN_WIDTH").expect("Environment variable 'SCREEN_WIDTH' missing").parse().unwrap();
+        let default_time_scale = std::env::var("DEFAULT_TIME_SCALE").expect("Environment variable 'DEFAULT_TIME_SCALE' missing").parse().unwrap();
+        let default_world_scale = std::env::var("DEFAULT_WORLD_SCALE").expect("Environment variable 'DEFAULT_WORLD_SCALE' missing").parse().unwrap();
         
         Config { 
             sprite_file,
