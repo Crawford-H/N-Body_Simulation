@@ -82,7 +82,20 @@ impl World for SequentialWorld {
     }
 }
 
-pub struct WorkerThreadsWorld {
+/// Uses the Rust standard library to calculate position and velocities.
+/// The worker threads are initalized to loop over the process_particles
+/// function along with a reference to the vector of particles, the dt,
+/// and a barrier. The worker threads will update the particles when the
+/// the update function is called.
+/// 
+/// The process_particle function starts by pausing 
+/// execution at the barrier. This execution will be continued once the 
+/// main thread executes the function. This will happen when the update
+/// function is called as the correct amount of threads will be waiting
+/// at the barrier. The particles positions and velocities are then
+/// calculated and updated. Finally, the barrier will stop execution once
+/// more to allow each thread to finish updating the particles.
+pub struct ThreadsWorld {
     pub particles: Arc<RwLock<Vec<Particle>>>,
     pub particle_count: usize,
     dt: Arc<AtomicF64>,
@@ -91,7 +104,7 @@ pub struct WorkerThreadsWorld {
     num_threads: usize,
 }
 
-impl World for WorkerThreadsWorld {
+impl World for ThreadsWorld {
     fn update(&mut self, dt: f64) {
         // update the delta time for threads to use
         self.dt.store(dt, Ordering::Release);
@@ -121,10 +134,10 @@ impl World for WorkerThreadsWorld {
     }
 }
 
-impl WorkerThreadsWorld {
+impl ThreadsWorld {
     /// Creates a new [`World`] with a given amount of worker threads.
     pub fn new(num_threads: usize, particles: Vec<Particle>) -> Self {
-        let mut world = WorkerThreadsWorld {
+        let mut world = ThreadsWorld {
             particles: Arc::new(RwLock::new(particles)),
             threads: Vec::new(),
             dt: Arc::new(AtomicF64::new(0.)),

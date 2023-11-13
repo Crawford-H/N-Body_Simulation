@@ -3,16 +3,17 @@ use std::time::Instant;
 use coffee::graphics::{Batch, Color, Frame, Image, Point, Sprite, Transformation, Vector, Window};
 use coffee::input::{keyboard, mouse, KeyboardAndMouse};
 use coffee::load::Task;
+use coffee::ui::{UserInterface, Renderer, Element, Row, Justify, Align, Column, Text};
 use coffee::{Game, Timer};
 use glam::DVec2;
 use rayon::prelude::*;
 
-use crate::world::{World, WorkerThreadsWorld, RayonWorld, SequentialWorld};
+use crate::world::{World, ThreadsWorld, RayonWorld, SequentialWorld};
 use crate::config::Config;
 
 #[derive(Debug)]
 enum WorldType {
-    WorkerThreads,
+    Threads,
     Rayon,
     Sequential,
 }
@@ -36,7 +37,7 @@ impl Application {
         self.world_type = new_algorithm;
         let particles = self.world.get_particles();
         self.world = match self.world_type {
-            WorldType::WorkerThreads => Box::new(WorkerThreadsWorld::new(self.config.num_threads, particles)),
+            WorldType::Threads => Box::new(ThreadsWorld::new(self.config.num_threads, particles)),
             WorldType::Rayon => Box::new(RayonWorld { particles }),
             WorldType::Sequential => Box::new(SequentialWorld { particles }),
         };
@@ -52,8 +53,8 @@ impl Game for Application {
 
         Task::stage("Loading sprites...", Image::load(config.sprite_file.as_str())).map(|sprite| 
             Application {
-                world: Box::new(WorkerThreadsWorld::new(config.num_threads, Vec::new())),
-                world_type: WorldType::WorkerThreads,
+                world: Box::new(ThreadsWorld::new(config.num_threads, Vec::new())),
+                world_type: WorldType::Threads,
                 time_scale: config.default_time_scale,
                 world_scale: config.default_world_scale,
                 camera_position: Point::new((config.screen_width / 2) as f32, (config.screen_height / 2) as f32),
@@ -100,9 +101,9 @@ impl Game for Application {
         // change world algorithm
         if input.keyboard().was_key_released(keyboard::KeyCode::Tab) {
             match self.world_type {
-                WorldType::WorkerThreads => self.change_world_algorithm(WorldType::Rayon),
+                WorldType::Threads => self.change_world_algorithm(WorldType::Rayon),
                 WorldType::Rayon => self.change_world_algorithm(WorldType::Sequential),
-                WorldType::Sequential => self.change_world_algorithm(WorldType::WorkerThreads),
+                WorldType::Sequential => self.change_world_algorithm(WorldType::Threads),
             }
         }
 
@@ -135,5 +136,41 @@ impl Game for Application {
         if input.keyboard().is_key_pressed(keyboard::KeyCode::D) {
             self.camera_position.x -= 5.;
         }
+    }
+}
+
+#[derive(Debug, Clone, Copy)]
+pub enum Message {
+    
+}
+
+impl UserInterface for Application {
+    type Message = Message;
+
+    type Renderer = Renderer;
+
+    fn react(&mut self, message: Self::Message, _window: &mut Window) {
+        match message {
+        }
+    }
+
+    fn layout(&mut self, window: &Window,) -> Element<Message> {
+        Row::new()
+            .padding(20)
+            .spacing(20)
+            .width(window.width() as u32)
+            .height(window.height() as u32)
+            .justify_content(Justify::Center)
+            .align_items(Align::End)
+            .push(Column::new()
+                .padding(10)
+                .push(Text::new(&format!("Scale: {} meter(s) / pixel", 1. / self.world_scale)))
+                .push(Text::new(&format!("Number of particles: {}", self.world.get_particles().len())))
+                .push(Text::new(&format!("Time Scale: {:.5} seconds / 1 real second", self.time_scale))))
+            .push(Column::new()
+                .push(Text::new("Hello Mom!")))
+            .push(Column::new()
+                .push(Text::new("Hello Mom!")))
+        .into()
     }
 }
