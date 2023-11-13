@@ -1,5 +1,3 @@
-use std::time::Instant;
-
 use coffee::graphics::{Batch, Color, Frame, Image, Point, Sprite, Transformation, Vector, Window};
 use coffee::input::{keyboard, mouse, KeyboardAndMouse};
 use coffee::load::Task;
@@ -19,15 +17,15 @@ enum WorldType {
 }
 
 pub struct Application {
+    /// Environment variables
     config: Config,
-    // member variables for data on world
+    /// Stores the world data and handles updating of particles
     world: Box<dyn World>,
+    /// The state of which world implementation is currently being used
     world_type: WorldType,
-    time_since_last_frame: Instant,
-    // member variables for rendering
+    /// Position of the camera for render particles
     camera_position: Point,
-    world_scale: f32,
-    time_scale: f64,
+    /// Container for sprites of particles to render
     batch: Batch,
 }
 
@@ -47,6 +45,7 @@ impl Application {
 impl Game for Application {
     type Input = KeyboardAndMouse; // No input data
     type LoadingScreen = (); // No loading screen
+    const TICKS_PER_SECOND: u16 = 60;
 
     fn load(_window: &Window) -> Task<Application> {
         let config = Config::new();
@@ -55,11 +54,8 @@ impl Game for Application {
             Application {
                 world: Box::new(ThreadsWorld::new(config.num_threads, Vec::new())),
                 world_type: WorldType::Threads,
-                time_scale: config.default_time_scale,
-                world_scale: config.default_world_scale,
                 camera_position: Point::new((config.screen_width / 2) as f32, (config.screen_height / 2) as f32),
                 batch: Batch::new(sprite),
-                time_since_last_frame: Instant::now(),
                 config
         })
     }
@@ -73,16 +69,11 @@ impl Game for Application {
         let camera_transform = Transformation::translate(Vector::new(self.camera_position.x, self.camera_position.y));
         let mut camera = target.transform(camera_transform);
 
-        // update particles in world
-        let dt = self.time_since_last_frame.elapsed().as_secs_f64() * self.time_scale;
-        self.time_since_last_frame = Instant::now();
-        self.world.update(dt);
-
         // generate particles to draw
         let particles = self.world.get_particles();
         let sprites = particles.par_iter().map(|particle| Sprite {
             source: self.config.sprite_source,
-            position: Point::new(particle.position.x as f32, particle.position.y as f32) * self.world_scale - Vector::new(self.config.horizontal_offset, self.config.vertical_offset),
+            position: Point::new(particle.position.x as f32, particle.position.y as f32) * self.config.world_scale - Vector::new(self.config.horizontal_offset, self.config.vertical_offset),
             scale: (self.config.sprite_scale, self.config.sprite_scale),
         });
 
@@ -92,11 +83,15 @@ impl Game for Application {
         self.batch.draw(&mut camera);
     }
 
+    fn update(&mut self, _window: &Window) {
+        self.world.update(self.config.time_scale);
+    }
+
     fn interact(&mut self, input: &mut Self::Input, _window: &mut Window) {
         // calculate world position from screen positions
         let cursor_position = input.mouse().cursor_position();
-        let x_position = ((cursor_position.x - self.camera_position.x) / self.world_scale) as f64;
-        let y_position = ((cursor_position.y - self.camera_position.y) / self.world_scale) as f64;
+        let x_position = ((cursor_position.x - self.camera_position.x) / self.config.world_scale) as f64;
+        let y_position = ((cursor_position.y - self.camera_position.y) / self.config.world_scale) as f64;
 
         // change world algorithm
         if input.keyboard().was_key_released(keyboard::KeyCode::Tab) {
@@ -164,13 +159,11 @@ impl UserInterface for Application {
             .align_items(Align::End)
             .push(Column::new()
                 .padding(10)
-                .push(Text::new(&format!("Scale: {} meter(s) / pixel", 1. / self.world_scale)))
+                .push(Text::new(&format!("Scale: {} meter(s) / pixel", 1. / self.config.world_scale)))
                 .push(Text::new(&format!("Number of particles: {}", self.world.get_particles().len())))
-                .push(Text::new(&format!("Time Scale: {:.5} seconds / 1 real second", self.time_scale))))
-            .push(Column::new()
-                .push(Text::new("Hello Mom!")))
-            .push(Column::new()
-                .push(Text::new("Hello Mom!")))
+                .push(Text::new(&format!("Time Scale: {:.5} seconds / 1 real second", self.config.time_scale * Self::TICKS_PER_SECOND as f64))))
+            .push(Column::new())
+            .push(Column::new())
         .into()
     }
 }

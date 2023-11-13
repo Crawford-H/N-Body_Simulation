@@ -16,8 +16,8 @@ pub struct Config {
     pub screen_height: u32,
     pub screen_width: u32,
     // world parameters
-    pub default_time_scale: f64,
-    pub default_world_scale: f32,
+    pub time_scale: f64,
+    pub world_scale: f32,
 }
 
 impl Config {
@@ -30,7 +30,7 @@ impl Config {
         let num_threads = std::env::var("NUM_THREADS").expect("Environment variable 'NUM_THREADS' missing").parse().unwrap();
         let screen_height = std::env::var("SCREEN_HEIGHT").expect("Environment variable 'SCREEN_HEIGHT' missing").parse().unwrap();
         let screen_width = std::env::var("SCREEN_WIDTH").expect("Environment variable 'SCREEN_WIDTH' missing").parse().unwrap();
-        let default_time_scale = std::env::var("DEFAULT_TIME_SCALE").expect("Environment variable 'DEFAULT_TIME_SCALE' missing").parse().unwrap();
+        let default_time_scale: f64 = std::env::var("DEFAULT_TIME_SCALE").expect("Environment variable 'DEFAULT_TIME_SCALE' missing").parse().unwrap();
         let default_world_scale = std::env::var("DEFAULT_WORLD_SCALE").expect("Environment variable 'DEFAULT_WORLD_SCALE' missing").parse().unwrap();
         
         Config { 
@@ -44,8 +44,8 @@ impl Config {
             num_threads,
             screen_height,
             screen_width,
-            default_time_scale,
-            default_world_scale, 
+            time_scale: 1. / 60. * default_time_scale,
+            world_scale: default_world_scale, 
         }   
     }
 }
